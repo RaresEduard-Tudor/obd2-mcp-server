@@ -1,10 +1,11 @@
 """OBD-II Diagnostic Oracle — FastMCP server entry point.
 
 Tools:
-  • get_code_details  — look up a specific DTC code
-  • search_by_symptom — full-text symptom search (FTS5)
-  • list_codes        — enumerate codes, optionally filtered by category
-  • ping              — health-check: confirms the server and database are running
+  • get_code_details   — look up a specific DTC code (includes severity)
+  • search_by_symptom  — full-text symptom search (FTS5) with pagination
+  • list_codes         — enumerate codes, filtered by category/severity, with pagination
+  • get_related_codes  — find other codes in the same system category
+  • ping               — health-check: confirms the server and database are running
 
 Resources:
   • obd2://code/{code}      — single DTC as a resource (e.g. obd2://code/P0300)
@@ -45,57 +46,93 @@ def get_code_details(code: str) -> dict | str:
 
 
 @mcp.tool()
-def search_by_symptom(text: str) -> list[dict] | str:
+def search_by_symptom(text: str, limit: int = 10, offset: int = 0) -> list[dict] | str:
     """Search OBD-II codes by symptom description or free-text query.
 
     Uses full-text search (FTS5) so word-order doesn't matter — "engine shaking"
     and "shaking engine" both work. Use this tool when the user describes a car
     problem in plain language, e.g. "my car is shaking", "rough idle",
     "check engine light flashing", or "stalling at traffic lights".
-    Returns matching DTC codes with their category, description, symptoms, and fixes.
+    Returns matching DTC codes with their category, severity, description, symptoms, and fixes.
 
     Args:
-        text: Free-text description of the symptom or problem.
+        text:   Free-text description of the symptom or problem.
+        limit:  Maximum number of results to return (default 10, max 50).
+        offset: Number of results to skip for pagination (default 0).
     """
     query = text.strip()
     if not query:
         return "Please provide a symptom description to search for."
     try:
-        results = db.search_symptoms(query)
+        results = db.search_symptoms(query, limit=min(limit, 50))
     except Exception as exc:
         logger.error("FTS search failed: %s", exc)
         return f"Search failed: {exc}"
     if not results:
         return f"No DTC codes matched the symptom description: '{query}'."
+    return results[offset:]
+
+
+@mcp.tool()
+def list_codes(
+    category: str = "", severity: str = "", limit: int = 50, offset: int = 0
+) -> list[dict] | str:
+    """List available OBD-II DTC codes, optionally filtered by category and/or severity.
+
+    Returns code + category + severity + description. Supports pagination via
+    limit/offset. Useful for browsing all codes or finding what's available
+    within a specific system category or urgency level.
+
+    Severity levels: Critical (stop driving), Warning (repair soon), Info (emissions only).
+
+    Available categories: Fuel & Air, Ignition, Oxygen Sensors,
+    Catalytic Converter, EVAP, EGR, Transmission, Electrical, Throttle,
+    Cooling, Oil, ABS & Brakes, Variable Valve Timing, Crankshaft & Camshaft,
+    Knock Sensor, Fuel Injectors, Turbocharger, Secondary Air Injection,
+    A/C & Climate, Network & Communication, Steering.
+
+    Args:
+        category: Optional category name to filter by (case-sensitive).
+        severity: Optional severity level to filter by: Critical, Warning, or Info.
+        limit:    Maximum number of results (default 50).
+        offset:   Number of results to skip for pagination (default 0).
+    """
+    cat = category.strip() or None
+    sev = severity.strip() or None
+    results = db.list_codes(category=cat, limit=min(limit, 200), offset=offset)
+    if sev:
+        results = [r for r in results if r.get("severity") == sev]
+    if not results:
+        if cat or sev:
+            available_cats = db.get_categories()
+            return (
+                "No codes found"
+                + (f" for category '{cat}'" if cat else "")
+                + (f" with severity '{sev}'" if sev else "")
+                + f". Available categories: {', '.join(available_cats)}."
+            )
+        return "No codes found in the database."
     return results
 
 
 @mcp.tool()
-def list_codes(category: str = "") -> list[dict] | str:
-    """List available OBD-II DTC codes, optionally filtered by category.
+def get_related_codes(code: str) -> list[dict] | str:
+    """Find other OBD-II codes in the same system category as the given code.
 
-    Returns a concise list of code + description pairs. Useful for browsing
-    all codes or finding what's available within a specific system category.
-
-    Available categories: Fuel & Air, Ignition, Oxygen Sensors,
-    Catalytic Converter, EVAP, EGR, Transmission, Electrical, Throttle,
-    Cooling, Oil, ABS & Brakes.
-
-    Call with no argument (or category="") to list all codes.
+    Useful for exploring related faults after identifying a primary code.
+    For example, if P0300 (random misfire) is found, this returns other
+    Ignition codes that may also be relevant.
 
     Args:
-        category: Optional category name to filter by (case-sensitive).
+        code: A DTC code (e.g. "P0300"). Case-insensitive.
     """
-    cat = category.strip() or None
-    results = db.list_codes(category=cat)
+    normalized = code.strip().upper()
+    results = db.get_related_codes(normalized)
     if not results:
-        if cat:
-            available = db.get_categories()
-            return (
-                f"No codes found for category '{cat}'. "
-                f"Available categories: {', '.join(available)}."
-            )
-        return "No codes found in the database."
+        # Check whether the code itself exists to give a better message
+        if db.lookup_code(normalized) is None:
+            return f"DTC code '{normalized}' was not found in the database."
+        return f"No other codes found in the same category as '{normalized}'."
     return results
 
 
@@ -134,6 +171,7 @@ def resource_code(code: str) -> str:
     return (
         f"Code:        {row['code']}\n"
         f"Category:    {row['category']}\n"
+        f"Severity:    {row['severity']}\n"
         f"Description: {row['description']}\n"
         f"Symptoms:    {row['symptoms']}\n"
         f"Fix:         {row['fix']}\n"
@@ -199,7 +237,8 @@ def diagnose(symptoms: str, codes: str = "") -> str:
         "",
         "Please provide a structured diagnostic response with these sections:",
         "1. **Likely Cause(s)** — ranked from most to least probable.",
-        "2. **Immediate Safety Concerns** — is the vehicle safe to drive?",
+        "2. **Immediate Safety Concerns** — if any code has severity 'Critical', "
+        "state clearly that the vehicle should NOT be driven until repaired.",
         "3. **Step-by-Step Diagnosis** — what to inspect or test first, in order.",
         "4. **Estimated Repair** — typical DIY difficulty (Easy / Moderate / Advanced) "
         "and whether a specialist should be consulted.",

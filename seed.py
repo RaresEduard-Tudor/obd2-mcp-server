@@ -17,6 +17,8 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS dtc_codes (
     code        TEXT PRIMARY KEY,
     category    TEXT NOT NULL,
+    severity    TEXT NOT NULL DEFAULT 'Warning'
+                    CHECK(severity IN ('Critical', 'Warning', 'Info')),
     description TEXT NOT NULL,
     symptoms    TEXT NOT NULL,
     fix         TEXT NOT NULL
@@ -24,6 +26,7 @@ CREATE TABLE IF NOT EXISTS dtc_codes (
 CREATE VIRTUAL TABLE IF NOT EXISTS dtc_codes_fts USING fts5(
     code,
     category,
+    severity,
     description,
     symptoms,
     fix,
@@ -35,27 +38,28 @@ CREATE VIRTUAL TABLE IF NOT EXISTS dtc_codes_fts USING fts5(
 # Trigger to keep FTS index in sync with the main table
 FTS_TRIGGERS = """
 CREATE TRIGGER IF NOT EXISTS dtc_codes_ai AFTER INSERT ON dtc_codes BEGIN
-    INSERT INTO dtc_codes_fts(rowid, code, category, description, symptoms, fix)
-    VALUES (new.rowid, new.code, new.category, new.description, new.symptoms, new.fix);
+    INSERT INTO dtc_codes_fts(rowid, code, category, severity, description, symptoms, fix)
+    VALUES (new.rowid, new.code, new.category, new.severity, new.description, new.symptoms, new.fix);
 END;
 CREATE TRIGGER IF NOT EXISTS dtc_codes_ad AFTER DELETE ON dtc_codes BEGIN
-    INSERT INTO dtc_codes_fts(dtc_codes_fts, rowid, code, category, description, symptoms, fix)
-    VALUES ('delete', old.rowid, old.code, old.category, old.description, old.symptoms, old.fix);
+    INSERT INTO dtc_codes_fts(dtc_codes_fts, rowid, code, category, severity, description, symptoms, fix)
+    VALUES ('delete', old.rowid, old.code, old.category, old.severity, old.description, old.symptoms, old.fix);
 END;
 CREATE TRIGGER IF NOT EXISTS dtc_codes_au AFTER UPDATE ON dtc_codes BEGIN
-    INSERT INTO dtc_codes_fts(dtc_codes_fts, rowid, code, category, description, symptoms, fix)
-    VALUES ('delete', old.rowid, old.code, old.category, old.description, old.symptoms, old.fix);
-    INSERT INTO dtc_codes_fts(rowid, code, category, description, symptoms, fix)
-    VALUES (new.rowid, new.code, new.category, new.description, new.symptoms, new.fix);
+    INSERT INTO dtc_codes_fts(dtc_codes_fts, rowid, code, category, severity, description, symptoms, fix)
+    VALUES ('delete', old.rowid, old.code, old.category, old.severity, old.description, old.symptoms, old.fix);
+    INSERT INTO dtc_codes_fts(rowid, code, category, severity, description, symptoms, fix)
+    VALUES (new.rowid, new.code, new.category, new.severity, new.description, new.symptoms, new.fix);
 END;
 """
 
 # (code, category, description, symptoms, fix)
-DTC_DATA: list[tuple[str, str, str, str, str]] = [
+DTC_DATA: list[tuple[str, str, str, str, str, str]] = [
     # ── Fuel & Air ─────────────────────────────────────────────────────────────
     (
         "P0100",
         "Fuel & Air",
+        "Warning",
         "Mass Air Flow (MAF) Sensor Circuit Malfunction",
         "Poor acceleration, rough idle, stalling, black smoke from exhaust",
         "Inspect MAF sensor wiring harness and connectors; clean or replace MAF sensor",
@@ -63,6 +67,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0101",
         "Fuel & Air",
+        "Warning",
         "Mass Air Flow (MAF) Sensor Circuit Range/Performance",
         "Hesitation during acceleration, poor fuel economy, rough idle",
         "Clean MAF sensor with MAF-safe cleaner; check for air leaks between MAF and throttle body; replace MAF sensor if fault persists",
@@ -70,6 +75,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0102",
         "Fuel & Air",
+        "Warning",
         "Mass Air Flow (MAF) Sensor Circuit Low Input",
         "Hard starting, stalling, black smoke, check engine light",
         "Inspect MAF wiring for short to ground; replace MAF sensor",
@@ -77,6 +83,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0103",
         "Fuel & Air",
+        "Warning",
         "Mass Air Flow (MAF) Sensor Circuit High Input",
         "Stalling, poor power, check engine light",
         "Inspect MAF sensor wiring for open circuit; replace MAF sensor",
@@ -84,6 +91,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0110",
         "Fuel & Air",
+        "Info",
         "Intake Air Temperature (IAT) Sensor Circuit Malfunction",
         "Poor fuel economy, rough idle, difficulty starting in cold weather",
         "Inspect IAT sensor wiring; replace IAT sensor or MAF/IAT combined sensor",
@@ -91,6 +99,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0128",
         "Cooling",
+        "Info",
         "Coolant Temperature Below Thermostat Regulating Temperature",
         "Heater performs poorly, temperature gauge stays low, poor fuel economy",
         "Replace the engine thermostat; inspect coolant temperature sensor",
@@ -98,6 +107,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0171",
         "Fuel & Air",
+        "Warning",
         "System Too Lean (Bank 1)",
         "Rough idle, hesitation, check engine light, poor fuel economy, misfires",
         "Check for vacuum leaks, inspect MAF sensor, test fuel pressure and injectors, replace oxygen sensor if faulty",
@@ -105,6 +115,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0172",
         "Fuel & Air",
+        "Warning",
         "System Too Rich (Bank 1)",
         "Black smoke from exhaust, poor fuel economy, rough idle, fuel smell",
         "Inspect MAF sensor for contamination, check for leaking fuel injectors, test fuel pressure regulator",
@@ -112,6 +123,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0173",
         "Fuel & Air",
+        "Warning",
         "Fuel Trim Malfunction (Bank 2)",
         "Poor fuel economy, rough idle, check engine light",
         "Inspect vacuum lines and intake manifold gasket on Bank 2; test MAF sensor",
@@ -119,6 +131,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0174",
         "Fuel & Air",
+        "Warning",
         "System Too Lean (Bank 2)",
         "Rough idle, hesitation, check engine light, poor fuel economy (Bank 2 side)",
         "Check for vacuum leaks on Bank 2 side, inspect MAF sensor, test fuel pressure",
@@ -126,6 +139,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0175",
         "Fuel & Air",
+        "Warning",
         "System Too Rich (Bank 2)",
         "Black smoke from exhaust (Bank 2), poor fuel economy, rough idle",
         "Inspect fuel injectors on Bank 2 for leaks; test fuel pressure; clean MAF sensor",
@@ -133,6 +147,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0190",
         "Fuel & Air",
+        "Warning",
         "Fuel Rail Pressure Sensor Circuit Malfunction",
         "Hard starting, stalling, poor performance, check engine light",
         "Inspect fuel rail pressure sensor wiring; test and replace sensor; check fuel pump output",
@@ -140,6 +155,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0191",
         "Fuel & Air",
+        "Warning",
         "Fuel Rail Pressure Sensor Circuit Range/Performance",
         "Hesitation, stalling, poor fuel economy",
         "Test fuel pump pressure; inspect fuel pressure regulator; check sensor wiring",
@@ -148,6 +164,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0300",
         "Ignition",
+        "Warning",
         "Random/Multiple Cylinder Misfire Detected",
         "Rough idle, shaking, flashing check engine light, loss of power",
         "Inspect and replace spark plugs, ignition coils, or fuel injectors; check compression; inspect for vacuum leaks",
@@ -155,6 +172,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0301",
         "Ignition",
+        "Warning",
         "Cylinder 1 Misfire Detected",
         "Rough idle, shaking, loss of power, check engine light flashing",
         "Replace spark plug and ignition coil on cylinder 1; inspect fuel injector; check compression on cylinder 1",
@@ -162,6 +180,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0302",
         "Ignition",
+        "Warning",
         "Cylinder 2 Misfire Detected",
         "Rough idle, shaking, loss of power, check engine light flashing",
         "Replace spark plug and ignition coil on cylinder 2; inspect fuel injector; check compression on cylinder 2",
@@ -169,6 +188,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0303",
         "Ignition",
+        "Warning",
         "Cylinder 3 Misfire Detected",
         "Rough idle, shaking, loss of power, check engine light flashing",
         "Replace spark plug and ignition coil on cylinder 3; inspect fuel injector; check compression on cylinder 3",
@@ -176,6 +196,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0304",
         "Ignition",
+        "Warning",
         "Cylinder 4 Misfire Detected",
         "Rough idle, shaking, loss of power, check engine light flashing",
         "Replace spark plug and ignition coil on cylinder 4; inspect fuel injector; check compression on cylinder 4",
@@ -183,6 +204,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0305",
         "Ignition",
+        "Warning",
         "Cylinder 5 Misfire Detected",
         "Rough idle, shaking, loss of power, check engine light flashing",
         "Replace spark plug and ignition coil on cylinder 5; inspect fuel injector; check compression on cylinder 5",
@@ -190,6 +212,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0306",
         "Ignition",
+        "Warning",
         "Cylinder 6 Misfire Detected",
         "Rough idle, shaking, loss of power, check engine light flashing",
         "Replace spark plug and ignition coil on cylinder 6; inspect fuel injector; check compression on cylinder 6",
@@ -197,6 +220,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0316",
         "Ignition",
+        "Warning",
         "Misfire Detected On Startup (First 1000 Revolutions)",
         "Rough start, shaking on cold start, check engine light",
         "Inspect spark plugs and coils; check for fuel delivery issues; inspect PCV system",
@@ -204,6 +228,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0351",
         "Ignition",
+        "Warning",
         "Ignition Coil A Primary/Secondary Circuit Malfunction",
         "Misfire on cylinder 1, rough idle, check engine light",
         "Test and replace ignition coil A; inspect wiring harness to coil A",
@@ -211,6 +236,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0352",
         "Ignition",
+        "Warning",
         "Ignition Coil B Primary/Secondary Circuit Malfunction",
         "Misfire on cylinder 2, rough idle, check engine light",
         "Test and replace ignition coil B; inspect wiring harness to coil B",
@@ -219,6 +245,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0130",
         "Oxygen Sensors",
+        "Warning",
         "O2 Sensor Circuit Malfunction (Bank 1, Sensor 1)",
         "Poor fuel economy, rough running, failed emissions test",
         "Inspect upstream O2 sensor wiring on Bank 1; replace sensor",
@@ -226,6 +253,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0131",
         "Oxygen Sensors",
+        "Warning",
         "O2 Sensor Circuit Low Voltage (Bank 1, Sensor 1)",
         "Poor fuel economy, rough running, failed emissions test",
         "Inspect O2 sensor wiring for damage; replace upstream O2 sensor on Bank 1",
@@ -233,6 +261,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0132",
         "Oxygen Sensors",
+        "Warning",
         "O2 Sensor Circuit High Voltage (Bank 1, Sensor 1)",
         "Rich running condition, poor fuel economy, failed emissions test",
         "Check for stuck-rich condition (leaking injectors); replace upstream O2 sensor if wiring is intact",
@@ -240,6 +269,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0133",
         "Oxygen Sensors",
+        "Warning",
         "O2 Sensor Circuit Slow Response (Bank 1, Sensor 1)",
         "Poor fuel economy, failed emissions test",
         "Replace upstream O2 sensor on Bank 1; check for exhaust leaks before sensor",
@@ -247,6 +277,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0136",
         "Oxygen Sensors",
+        "Warning",
         "O2 Sensor Circuit Malfunction (Bank 1, Sensor 2)",
         "Check engine light, potential poor fuel economy",
         "Inspect downstream O2 sensor wiring on Bank 1; replace sensor",
@@ -254,6 +285,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0141",
         "Oxygen Sensors",
+        "Warning",
         "O2 Sensor Heater Circuit Malfunction (Bank 1, Sensor 2)",
         "Poor fuel economy, check engine light, failed emissions test",
         "Replace downstream (post-cat) O2 sensor on Bank 1; check fuse and wiring for sensor heater circuit",
@@ -261,6 +293,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0150",
         "Oxygen Sensors",
+        "Warning",
         "O2 Sensor Circuit Malfunction (Bank 2, Sensor 1)",
         "Poor fuel economy, rough running, failed emissions test (Bank 2)",
         "Inspect upstream O2 sensor wiring on Bank 2; replace sensor",
@@ -268,6 +301,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0161",
         "Oxygen Sensors",
+        "Warning",
         "O2 Sensor Heater Circuit Malfunction (Bank 2, Sensor 2)",
         "Check engine light, failed emissions test",
         "Replace downstream O2 sensor on Bank 2; check fuse and wiring",
@@ -276,6 +310,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0420",
         "Catalytic Converter",
+        "Warning",
         "Catalyst System Efficiency Below Threshold (Bank 1)",
         "Check engine light, poor fuel economy, sulfur smell from exhaust",
         "Inspect for exhaust leaks before catalytic converter; replace catalytic converter; rule out engine misfires first as they damage cats",
@@ -283,6 +318,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0430",
         "Catalytic Converter",
+        "Warning",
         "Catalyst System Efficiency Below Threshold (Bank 2)",
         "Check engine light, poor fuel economy, sulfur smell from exhaust (Bank 2)",
         "Inspect for exhaust leaks before catalytic converter on Bank 2; replace catalytic converter on Bank 2",
@@ -291,6 +327,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0440",
         "EVAP",
+        "Info",
         "Evaporative Emission Control System Malfunction",
         "Check engine light, fuel smell near vehicle, failed emissions test",
         "Inspect fuel cap for proper seal; check EVAP hoses and purge valve; test charcoal canister",
@@ -298,6 +335,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0441",
         "EVAP",
+        "Info",
         "Evaporative Emission Control System Incorrect Purge Flow",
         "Check engine light, possible fuel smell",
         "Inspect and replace EVAP purge solenoid; check vacuum line to purge valve",
@@ -305,6 +343,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0442",
         "EVAP",
+        "Info",
         "Evaporative Emission Control System Leak Detected (Small Leak)",
         "Check engine light, possible fuel odor",
         "Tighten or replace fuel cap; inspect EVAP hoses for cracks; use smoke test to locate leak",
@@ -312,6 +351,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0446",
         "EVAP",
+        "Info",
         "Evaporative Emission Control System Vent Control Circuit Malfunction",
         "Check engine light, possible fuel smell",
         "Inspect EVAP vent valve; check wiring to vent solenoid; replace vent valve if faulty",
@@ -319,6 +359,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0455",
         "EVAP",
+        "Info",
         "Evaporative Emission Control System Leak Detected (Large Leak)",
         "Strong fuel smell, check engine light",
         "Check fuel cap; inspect EVAP purge and vent valves; perform smoke test on EVAP system",
@@ -326,6 +367,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0456",
         "EVAP",
+        "Info",
         "Evaporative Emission Control System Leak Detected (Very Small Leak)",
         "Check engine light, faint fuel odor",
         "Replace fuel cap first; inspect EVAP hoses and charcoal canister; use smoke machine for precise leak location",
@@ -334,6 +376,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0401",
         "EGR",
+        "Warning",
         "Exhaust Gas Recirculation (EGR) Flow Insufficient",
         "Rough idle, pinging or knocking under load, failed emissions test",
         "Clean or replace EGR valve; inspect EGR passages for carbon buildup; check DPFE sensor",
@@ -341,6 +384,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0402",
         "EGR",
+        "Warning",
         "Exhaust Gas Recirculation (EGR) Flow Excessive",
         "Rough idle, stalling, black smoke, check engine light",
         "Inspect EGR valve for stuck-open condition; clean or replace EGR valve",
@@ -348,6 +392,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0404",
         "EGR",
+        "Warning",
         "Exhaust Gas Recirculation (EGR) Circuit Range/Performance",
         "Rough idle, hesitation, check engine light",
         "Clean EGR valve pintle; replace EGR valve position sensor or full EGR assembly",
@@ -356,6 +401,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0500",
         "Transmission",
+        "Warning",
         "Vehicle Speed Sensor Malfunction",
         "Speedometer not working, harsh transmission shifts, ABS or traction control light on",
         "Inspect and replace vehicle speed sensor; check wiring harness and connectors",
@@ -363,6 +409,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0700",
         "Transmission",
+        "Warning",
         "Transmission Control System Malfunction",
         "Harsh or erratic shifting, transmission stuck in gear, check engine light",
         "Connect a scanner to read transmission-specific codes; inspect transmission fluid level and condition; diagnose TCM or solenoids as directed by secondary codes",
@@ -370,6 +417,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0715",
         "Transmission",
+        "Warning",
         "Input/Turbine Speed Sensor Circuit Malfunction",
         "Harsh shifting, transmission slipping, transmission warning light",
         "Replace input speed sensor; inspect transmission wiring harness",
@@ -377,6 +425,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0720",
         "Transmission",
+        "Warning",
         "Output Speed Sensor Circuit Malfunction",
         "Erratic shifting, speedometer issues, limp mode",
         "Inspect output speed sensor and wiring; replace sensor",
@@ -384,6 +433,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0730",
         "Transmission",
+        "Critical",
         "Incorrect Gear Ratio",
         "Slipping transmission, limp mode, transmission warning light",
         "Check transmission fluid condition; inspect solenoids; transmission service or rebuild may be required",
@@ -391,6 +441,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0740",
         "Transmission",
+        "Warning",
         "Torque Converter Clutch Circuit Malfunction",
         "Poor fuel economy, shuddering at highway speed, overheating transmission",
         "Inspect TCC solenoid and wiring; check transmission fluid; replace torque converter if solenoid is OK",
@@ -398,6 +449,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0750",
         "Transmission",
+        "Warning",
         "Shift Solenoid A Malfunction",
         "Harsh or incorrect shifting, limp mode, check engine light",
         "Replace shift solenoid A; check transmission fluid condition and level",
@@ -406,6 +458,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0560",
         "Electrical",
+        "Warning",
         "System Voltage Malfunction",
         "Dimming lights, erratic electrical behavior, check engine light",
         "Test battery and alternator; inspect for loose ground connections",
@@ -413,6 +466,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0562",
         "Electrical",
+        "Warning",
         "System Voltage Low",
         "Dimming lights, slow cranking, electrical accessories malfunctioning",
         "Test and replace battery if weak; inspect alternator output; check for excessive parasitic drain",
@@ -420,6 +474,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0563",
         "Electrical",
+        "Warning",
         "System Voltage High",
         "Battery overcharging, warning lights, possible damage to electrical components",
         "Test alternator voltage output; replace voltage regulator or alternator if overcharging",
@@ -427,6 +482,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0600",
         "Electrical",
+        "Critical",
         "Serial Communication Link Malfunction",
         "Multiple warning lights, erratic gauge readings, modules not responding",
         "Inspect CAN bus wiring for damage; check ECU and module grounds; scan for module-specific DTCs",
@@ -434,6 +490,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0606",
         "Electrical",
+        "Critical",
         "Control Module Processor Fault (ECM/PCM)",
         "Check engine light, drivability issues, possible no-start",
         "Check ECU grounds and power supply; update or replace ECU/PCM if internal fault confirmed",
@@ -442,6 +499,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0120",
         "Throttle",
+        "Warning",
         "Throttle/Pedal Position Sensor/Switch 'A' Circuit Malfunction",
         "Erratic acceleration, limp mode, stalling, rough idle",
         "Inspect TPS wiring and connectors; calibrate or replace throttle position sensor",
@@ -449,6 +507,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0121",
         "Throttle",
+        "Warning",
         "Throttle/Pedal Position Sensor/Switch 'A' Circuit Range/Performance",
         "Hesitation, limp mode, erratic throttle response",
         "Inspect throttle body for carbon buildup; replace TPS sensor; check for binding throttle cable",
@@ -456,6 +515,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0122",
         "Throttle",
+        "Warning",
         "Throttle/Pedal Position Sensor/Switch 'A' Circuit Low Input",
         "Limp mode, very poor acceleration, check engine light",
         "Inspect TPS wiring for short to ground; replace TPS sensor",
@@ -463,6 +523,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0123",
         "Throttle",
+        "Warning",
         "Throttle/Pedal Position Sensor/Switch 'A' Circuit High Input",
         "Limp mode, poor acceleration, check engine light",
         "Inspect TPS wiring for open circuit; replace TPS sensor",
@@ -470,6 +531,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0505",
         "Throttle",
+        "Warning",
         "Idle Control System Malfunction",
         "Erratic or high idle, stalling at idle",
         "Clean or replace idle air control (IAC) valve; check for vacuum leaks; inspect throttle body",
@@ -477,6 +539,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0507",
         "Throttle",
+        "Warning",
         "Idle Control System RPM High",
         "Engine idling too high (above 200 RPM over target)",
         "Inspect for vacuum leaks; clean throttle body; check IAC valve or electronic throttle control",
@@ -485,6 +548,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0115",
         "Cooling",
+        "Warning",
         "Engine Coolant Temperature Sensor 1 Circuit Malfunction",
         "Engine overheating warning, poor fuel economy, hard starting when cold",
         "Inspect coolant temperature sensor wiring; replace coolant temperature sensor",
@@ -492,6 +556,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0116",
         "Cooling",
+        "Warning",
         "Engine Coolant Temperature Sensor 1 Circuit Range/Performance",
         "Poor fuel economy, inaccurate temperature gauge, rough cold start",
         "Inspect coolant temperature sensor; check cooling system for air pockets; replace sensor",
@@ -499,6 +564,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0217",
         "Cooling",
+        "Critical",
         "Engine Over Temperature Condition",
         "Temperature gauge in red zone, steam from engine bay, coolant warning light",
         "Stop vehicle immediately; check coolant level; inspect for coolant leaks, faulty thermostat, or failed water pump",
@@ -506,6 +572,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0218",
         "Cooling",
+        "Critical",
         "Transmission Fluid Over Temperature Condition",
         "Transmission warning light, overheating smell, limp mode",
         "Check transmission fluid level and condition; inspect transmission cooler lines; add external cooler if towing",
@@ -514,6 +581,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0520",
         "Oil",
+        "Warning",
         "Engine Oil Pressure Sensor/Switch Circuit Malfunction",
         "Oil pressure warning light, suspected low oil pressure reading",
         "Check engine oil level; inspect oil pressure sensor and wiring; replace sensor; if oil pressure is genuinely low, diagnose oil pump",
@@ -521,6 +589,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0521",
         "Oil",
+        "Warning",
         "Engine Oil Pressure Sensor/Switch Range/Performance",
         "Fluctuating oil pressure gauge, oil pressure warning",
         "Check oil level and viscosity; inspect oil pressure sensor; test actual oil pressure mechanically",
@@ -528,6 +597,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0522",
         "Oil",
+        "Critical",
         "Engine Oil Pressure Sensor/Switch Low Voltage",
         "Oil pressure warning light on, check engine light",
         "Inspect sensor wiring for short to ground; replace oil pressure sensor",
@@ -536,6 +606,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0031",
         "ABS & Brakes",
+        "Critical",
         "Right Front Wheel Speed Sensor Circuit Malfunction",
         "ABS warning light, traction control light, ABS not functioning",
         "Inspect right front wheel speed sensor and wiring; replace sensor; check reluctor ring for damage",
@@ -543,6 +614,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0034",
         "ABS & Brakes",
+        "Critical",
         "Right Rear Wheel Speed Sensor Circuit Malfunction",
         "ABS warning light, traction control light, ABS not functioning",
         "Inspect right rear wheel speed sensor and wiring; replace sensor; check reluctor ring for damage",
@@ -550,6 +622,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0035",
         "ABS & Brakes",
+        "Critical",
         "Left Front Wheel Speed Sensor Circuit Malfunction",
         "ABS warning light, traction control light, ABS not functioning",
         "Inspect left front wheel speed sensor and wiring; replace sensor; check reluctor ring",
@@ -557,6 +630,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0040",
         "ABS & Brakes",
+        "Critical",
         "Right Front Wheel Speed Sensor Signal Fault",
         "ABS warning light, erratic speedometer",
         "Inspect wheel speed sensor mounting and gap; check for metallic debris on reluctor ring",
@@ -564,6 +638,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0265",
         "ABS & Brakes",
+        "Critical",
         "ABS Actuator Relay Circuit Open",
         "ABS and stability control warning lights, ABS disabled",
         "Inspect ABS relay and fuse; check wiring to ABS module; replace relay or ABS module",
@@ -572,6 +647,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0036",
         "ABS & Brakes",
+        "Critical",
         "Left Rear Wheel Speed Sensor Circuit Malfunction",
         "ABS warning light, traction control light, ABS not functioning",
         "Inspect left rear wheel speed sensor and wiring; replace sensor; check reluctor ring for damage",
@@ -579,6 +655,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0041",
         "ABS & Brakes",
+        "Critical",
         "Right Front Wheel Speed Sensor Signal Fault",
         "ABS warning light, erratic ABS engagement, speedometer fluctuation",
         "Check wheel speed sensor air gap and reluctor ring teeth; clean sensor face; replace sensor if signal absent",
@@ -586,6 +663,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0046",
         "ABS & Brakes",
+        "Critical",
         "Left Front Wheel Speed Sensor Signal Fault",
         "ABS warning light, loss of traction control, stability control disabled",
         "Check sensor mounting bracket and reluctor ring; clean debris; replace sensor if waveform is erratic",
@@ -593,6 +671,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0047",
         "ABS & Brakes",
+        "Critical",
         "Left Rear Wheel Speed Sensor Signal Fault",
         "ABS warning light, ABS activating at low speed, stability control fault",
         "Inspect sensor air gap and reluctor ring; replace wheel speed sensor or reluctor ring if damaged",
@@ -600,6 +679,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0110",
         "ABS & Brakes",
+        "Critical",
         "ABS Pump Motor Circuit Malfunction",
         "ABS and stability control warning lights, ABS and TCS disabled",
         "Check ABS pump motor fuse and relay; inspect motor wiring; replace ABS hydraulic unit if motor has failed",
@@ -607,6 +687,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0121",
         "ABS & Brakes",
+        "Critical",
         "ABS Valve Relay Circuit Malfunction",
         "ABS warning light, ABS disabled, longer stopping distances",
         "Inspect ABS valve relay and associated fuse; check wiring harness to ABS module; replace relay or ABS module",
@@ -614,6 +695,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0161",
         "ABS & Brakes",
+        "Critical",
         "ABS/TCS Brake Switch Circuit Malfunction",
         "ABS or traction control not functioning properly, warning lights illuminated",
         "Inspect brake light switch and its wiring; replace brake light switch; check fuse",
@@ -621,6 +703,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0196",
         "ABS & Brakes",
+        "Critical",
         "Yaw Rate Sensor Circuit Malfunction",
         "Stability control warning light, ESC disabled, pulling during cornering",
         "Inspect yaw rate sensor connector and wiring; calibrate or replace yaw rate sensor",
@@ -628,6 +711,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0245",
         "ABS & Brakes",
+        "Critical",
         "Wheel Speed Sensor Frequency Error",
         "ABS warning light, inconsistent ABS activation",
         "Inspect reluctor ring for missing or damaged teeth; check sensor air gap; replace sensor or reluctor ring",
@@ -635,6 +719,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0550",
         "ABS & Brakes",
+        "Critical",
         "ABS Electronic Control Unit Malfunction",
         "ABS, TCS, and stability control all disabled, multiple warning lights",
         "Check power and ground to ABS module; inspect wiring harness; replace ABS control module if internal fault confirmed",
@@ -643,6 +728,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0460",
         "Steering",
+        "Critical",
         "Steering Angle Sensor Circuit Malfunction",
         "Stability control warning light, ESC disabled, steering warning light",
         "Inspect steering angle sensor connector; replace sensor; re-calibrate after replacement with scan tool",
@@ -650,6 +736,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0461",
         "Steering",
+        "Critical",
         "Steering Angle Sensor Circuit Range/Performance",
         "ESC and traction control warning lights, steering feel may change",
         "Perform steering angle sensor calibration (lock-to-lock); replace sensor if calibration fails",
@@ -657,6 +744,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0485",
         "Steering",
+        "Critical",
         "Steering Assist Control Actuator Failure",
         "Heavy steering, power steering warning light, reduced steering assist",
         "Check power steering control module for fault codes; inspect motor wiring; replace electric power steering motor or module",
@@ -664,6 +752,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "C0490",
         "Steering",
+        "Critical",
         "Electronic Power Steering (EPS) System Fault",
         "Power steering warning light, steering is heavy especially at low speed",
         "Check EPS module fuse and power supply; update EPS control module software; replace EPS module or motor assembly",
@@ -672,6 +761,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0010",
         "Variable Valve Timing",
+        "Warning",
         '"A" Camshaft Position Actuator Circuit Malfunction (Bank 1)',
         "Rough idle, poor fuel economy, check engine light, reduced power",
         "Check VVT solenoid valve wiring; clean or replace VVT oil control solenoid; inspect for sludge buildup in oil passages",
@@ -679,6 +769,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0011",
         "Variable Valve Timing",
+        "Warning",
         '"A" Camshaft Position Timing Over-Advanced or System Performance (Bank 1)',
         "Rough idle at cold start, rattling at startup, poor fuel economy, check engine light",
         "Change engine oil and filter; clean VVT solenoid screen; replace VVT solenoid; inspect timing chain for stretch",
@@ -686,6 +777,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0012",
         "Variable Valve Timing",
+        "Warning",
         '"A" Camshaft Position Timing Over-Retarded (Bank 1)',
         "Hard starting, poor idle, lack of power, check engine light",
         "Change engine oil and filter; clean or replace VVT oil control valve; inspect timing chain and tensioner",
@@ -693,6 +785,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0013",
         "Variable Valve Timing",
+        "Warning",
         '"B" Camshaft Position Actuator Circuit Malfunction (Bank 1)',
         "Rough idle, poor performance, check engine light",
         "Inspect VVT solenoid wiring and connector; replace exhaust camshaft VVT solenoid (Bank 1)",
@@ -700,6 +793,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0014",
         "Variable Valve Timing",
+        "Warning",
         '"B" Camshaft Position Timing Over-Advanced or System Performance (Bank 1)',
         "Rough idle, engine rattle at startup, poor fuel economy",
         "Change oil and filter; clean VVT solenoid screen; replace exhaust cam VVT solenoid; check timing chain",
@@ -707,6 +801,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0015",
         "Variable Valve Timing",
+        "Warning",
         '"B" Camshaft Position Timing Over-Retarded (Bank 1)',
         "Hard cold start, poor power, rough idle, check engine light",
         "Change engine oil; clean or replace exhaust cam VVT solenoid; inspect timing chain and cam phaser",
@@ -714,6 +809,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0016",
         "Variable Valve Timing",
+        "Warning",
         "Crankshaft Position to Camshaft Position Correlation (Bank 1, Sensor A)",
         "Engine crank but no-start, rough running, check engine light",
         "Inspect timing chain for stretch or skipped teeth; replace timing chain kit; check cam and crank reluctor rings",
@@ -721,6 +817,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0017",
         "Variable Valve Timing",
+        "Warning",
         "Crankshaft Position to Camshaft B Position Correlation (Bank 1)",
         "Rough running, difficult to start, check engine light",
         "Inspect timing chain; replace timing chain and guides; verify cam phaser operation",
@@ -728,6 +825,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0020",
         "Variable Valve Timing",
+        "Warning",
         '"A" Camshaft Position Actuator Circuit Malfunction (Bank 2)',
         "Rough idle, poor fuel economy, check engine light",
         "Check VVT solenoid wiring on Bank 2; clean or replace VVT oil control solenoid; check oil level and quality",
@@ -735,6 +833,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0021",
         "Variable Valve Timing",
+        "Warning",
         '"A" Camshaft Position Timing Over-Advanced or System Performance (Bank 2)',
         "Rough idle, rattling at cold start, check engine light",
         "Change engine oil; clean or replace VVT solenoid on Bank 2; inspect timing chain",
@@ -742,6 +841,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0022",
         "Variable Valve Timing",
+        "Warning",
         '"A" Camshaft Position Timing Over-Retarded (Bank 2)',
         "Hard starting, poor idle, reduced power, check engine light",
         "Change engine oil; replace VVT solenoid on Bank 2; inspect timing chain and tensioner",
@@ -750,6 +850,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0335",
         "Crankshaft & Camshaft",
+        "Warning",
         'Crankshaft Position Sensor "A" Circuit Malfunction',
         "No start or intermittent stall, engine cranks but won't fire, check engine light",
         "Inspect CKP sensor wiring and connector for damage; replace crankshaft position sensor; check reluctor wheel for missing teeth",
@@ -757,6 +858,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0336",
         "Crankshaft & Camshaft",
+        "Warning",
         'Crankshaft Position Sensor "A" Circuit Range/Performance',
         "Intermittent stalling, rough running, engine hesitation",
         "Check CKP sensor air gap; inspect reluctor ring; replace crankshaft position sensor",
@@ -764,6 +866,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0337",
         "Crankshaft & Camshaft",
+        "Warning",
         'Crankshaft Position Sensor "A" Circuit Low Input',
         "Engine stalls or won't start, no tachometer reading",
         "Inspect sensor wiring for short to ground; replace crankshaft position sensor",
@@ -771,6 +874,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0338",
         "Crankshaft & Camshaft",
+        "Warning",
         'Crankshaft Position Sensor "A" Circuit High Input',
         "Engine stalls or won't start, erratic tachometer",
         "Inspect sensor wiring for open circuit or short to voltage; replace crankshaft position sensor",
@@ -778,6 +882,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0340",
         "Crankshaft & Camshaft",
+        "Warning",
         'Camshaft Position Sensor "A" Circuit Malfunction (Bank 1)',
         "No start, stalling, rough running, check engine light",
         "Inspect CMP sensor wiring and connector; replace camshaft position sensor (Bank 1 intake); check tone wheel",
@@ -785,6 +890,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0341",
         "Crankshaft & Camshaft",
+        "Warning",
         'Camshaft Position Sensor "A" Circuit Range/Performance (Bank 1)',
         "Hard starting, rough idle, poor power, timing-related issues",
         "Inspect CMP sensor air gap and tone wheel; replace camshaft position sensor; check timing chain for stretch",
@@ -792,6 +898,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0345",
         "Crankshaft & Camshaft",
+        "Warning",
         'Camshaft Position Sensor "A" Circuit Malfunction (Bank 2)',
         "No start, stalling, rough running on Bank 2 side",
         "Inspect CMP sensor wiring on Bank 2; replace camshaft position sensor (Bank 2 intake)",
@@ -799,6 +906,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0346",
         "Crankshaft & Camshaft",
+        "Warning",
         'Camshaft Position Sensor "A" Circuit Range/Performance (Bank 2)',
         "Hard starting, rough idle, timing issues on V-engine Bank 2",
         "Inspect sensor air gap and tone wheel on Bank 2; replace camshaft position sensor; inspect timing chain",
@@ -807,6 +915,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0325",
         "Knock Sensor",
+        "Warning",
         "Knock Sensor 1 Circuit Malfunction (Bank 1 or Single Sensor)",
         "Check engine light, potential engine pinging under load, reduced performance (ECU retards timing as precaution)",
         "Inspect knock sensor wiring harness and connector; replace knock sensor; re-torque sensor to spec (over-tightening causes false reads)",
@@ -814,6 +923,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0326",
         "Knock Sensor",
+        "Warning",
         "Knock Sensor 1 Circuit Range/Performance (Bank 1 or Single Sensor)",
         "Check engine light, slight reduction in power or fuel economy",
         "Check sensor mounting and torque; inspect wiring for chafing; replace knock sensor",
@@ -821,6 +931,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0327",
         "Knock Sensor",
+        "Warning",
         "Knock Sensor 1 Circuit Low Input (Bank 1 or Single Sensor)",
         "Check engine light, possible engine pinging, reduced power under load",
         "Inspect wiring for short to ground; replace knock sensor; verify correct sensor for application",
@@ -828,6 +939,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0328",
         "Knock Sensor",
+        "Warning",
         "Knock Sensor 1 Circuit High Input (Bank 1 or Single Sensor)",
         "Check engine light, ECU may retard timing causing poor performance",
         "Inspect wiring for open circuit; replace knock sensor; check PCM knock input functionality",
@@ -835,6 +947,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0330",
         "Knock Sensor",
+        "Warning",
         "Knock Sensor 2 Circuit Malfunction (Bank 2)",
         "Check engine light on V-engine, pinging under load (Bank 2 side), reduced power",
         "Inspect Bank 2 knock sensor wiring and connector; replace knock sensor; re-torque to spec",
@@ -842,6 +955,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0331",
         "Knock Sensor",
+        "Warning",
         "Knock Sensor 2 Circuit Range/Performance (Bank 2)",
         "Check engine light, slight power reduction, possible pinging",
         "Check sensor mounting torque on Bank 2; replace knock sensor; inspect wiring harness routing",
@@ -849,6 +963,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0332",
         "Knock Sensor",
+        "Warning",
         "Knock Sensor 2 Circuit Low Input (Bank 2)",
         "Check engine light, pinging under load on Bank 2",
         "Inspect wiring for short to ground on Bank 2 knock sensor circuit; replace knock sensor",
@@ -856,6 +971,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0333",
         "Knock Sensor",
+        "Warning",
         "Knock Sensor 2 Circuit High Input (Bank 2)",
         "Check engine light, timing retard on Bank 2, reduced fuel economy",
         "Inspect wiring for open circuit on Bank 2; replace knock sensor; verify PCM operation",
@@ -864,6 +980,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0201",
         "Fuel Injectors",
+        "Warning",
         "Cylinder 1 Injector Circuit Malfunction",
         "Misfire on cylinder 1, rough idle, fuel smell, check engine light",
         "Inspect cylinder 1 injector wiring and connector; test injector resistance; replace injector or injector driver if PCM output is faulty",
@@ -871,6 +988,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0202",
         "Fuel Injectors",
+        "Warning",
         "Cylinder 2 Injector Circuit Malfunction",
         "Misfire on cylinder 2, rough idle, fuel smell, check engine light",
         "Inspect cylinder 2 injector wiring; test injector resistance (typically 11–17 Ω); replace injector if shorted or open",
@@ -878,6 +996,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0203",
         "Fuel Injectors",
+        "Warning",
         "Cylinder 3 Injector Circuit Malfunction",
         "Misfire on cylinder 3, rough idle, check engine light",
         "Inspect injector connector and wiring for cylinder 3; swap injector with known-good to isolate fault; replace as needed",
@@ -885,6 +1004,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0204",
         "Fuel Injectors",
+        "Warning",
         "Cylinder 4 Injector Circuit Malfunction",
         "Misfire on cylinder 4, rough idle, check engine light",
         "Inspect cylinder 4 injector connector; test injector resistance; replace injector or address PCM driver fault",
@@ -892,6 +1012,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0205",
         "Fuel Injectors",
+        "Warning",
         "Cylinder 5 Injector Circuit Malfunction",
         "Misfire on cylinder 5 (V6/V8), rough idle, check engine light",
         "Inspect injector wiring on cylinder 5; swap and test injector; replace injector or address wiring fault",
@@ -899,6 +1020,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0206",
         "Fuel Injectors",
+        "Warning",
         "Cylinder 6 Injector Circuit Malfunction",
         "Misfire on cylinder 6, rough idle, check engine light",
         "Inspect cylinder 6 injector wiring and connector; replace injector if resistance out of spec",
@@ -906,6 +1028,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0261",
         "Fuel Injectors",
+        "Warning",
         "Cylinder 1 Injector Circuit Low",
         "Misfire or no-fire on cylinder 1, rough running, fuel trim lean on Bank 1",
         "Check injector wiring for short to ground; inspect PCM injector driver output; replace injector or repair wiring",
@@ -913,6 +1036,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0264",
         "Fuel Injectors",
+        "Warning",
         "Cylinder 2 Injector Circuit Low",
         "Misfire on cylinder 2, rough running, lean trim",
         "Check injector wiring for short to ground on cylinder 2; replace injector or repair harness",
@@ -920,6 +1044,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0267",
         "Fuel Injectors",
+        "Warning",
         "Cylinder 3 Injector Circuit Low",
         "Misfire on cylinder 3, rough idle, lean fuel trim",
         "Check injector connector and wiring for short to ground on cylinder 3; replace injector",
@@ -927,6 +1052,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0270",
         "Fuel Injectors",
+        "Warning",
         "Cylinder 4 Injector Circuit Low",
         "Misfire on cylinder 4, rough running, check engine light",
         "Inspect injector wiring for short to ground on cylinder 4; replace injector as needed",
@@ -935,6 +1061,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0087",
         "Fuel & Air",
+        "Warning",
         "Fuel Rail/System Pressure Too Low",
         "Hard starting, stalling under load, hesitation during acceleration, poor performance",
         "Check fuel pump pressure; replace fuel pump or fuel filter; inspect fuel pressure regulator; check for kinked fuel lines",
@@ -942,6 +1069,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0088",
         "Fuel & Air",
+        "Critical",
         "Fuel Rail/System Pressure Too High",
         "Rich running condition, engine flooding, black smoke, fuel smell, poor fuel economy",
         "Replace fuel pressure regulator; inspect fuel return line for restriction; check fuel pressure sensor accuracy",
@@ -949,6 +1077,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0089",
         "Fuel & Air",
+        "Warning",
         "Fuel Pressure Regulator 1 Performance",
         "Inconsistent fuel pressure, rough idle, hesitation, check engine light",
         "Inspect fuel pressure regulator vacuum line; replace fuel pressure regulator; check fuel pump volume",
@@ -956,6 +1085,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0090",
         "Fuel & Air",
+        "Warning",
         "Fuel Pressure Regulator 1 Control Circuit Malfunction",
         "Poor idle quality, erratic performance, check engine light",
         "Inspect fuel pressure regulator control solenoid wiring; replace solenoid or regulator assembly",
@@ -963,6 +1093,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0091",
         "Fuel & Air",
+        "Warning",
         "Fuel Pressure Regulator 1 Control Circuit Low",
         "Engine stalls, hard starting, poor fuel delivery",
         "Check for short to ground in fuel pressure regulator circuit; replace solenoid or repair harness",
@@ -970,6 +1101,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0092",
         "Fuel & Air",
+        "Warning",
         "Fuel Pressure Regulator 1 Control Circuit High",
         "Rich running, fuel smell, poor idle",
         "Check for open circuit or short to voltage in regulator circuit; replace solenoid; inspect PCM driver",
@@ -977,6 +1109,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0192",
         "Fuel & Air",
+        "Warning",
         "Fuel Rail Pressure Sensor Circuit Low Input",
         "Hard starting, stalling, poor acceleration, check engine light",
         "Inspect fuel rail pressure sensor wiring for short to ground; replace fuel rail pressure sensor",
@@ -984,6 +1117,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0193",
         "Fuel & Air",
+        "Warning",
         "Fuel Rail Pressure Sensor Circuit High Input",
         "Hard starting, rough idle, check engine light, possible reduced power mode",
         "Inspect sensor wiring for open circuit or short to voltage; replace fuel rail pressure sensor",
@@ -992,6 +1126,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0234",
         "Turbocharger",
+        "Critical",
         'Turbocharger/Supercharger "A" Overboost Condition',
         "Check engine light, engine may go into limp mode, excessive boost pressure warning",
         "Inspect wastegate actuator and solenoid; check boost control solenoid; inspect charge pipes for leaks; replace wastegate if stuck closed",
@@ -999,6 +1134,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0235",
         "Turbocharger",
+        "Warning",
         'Turbocharger/Supercharger Boost Sensor "A" Circuit Malfunction',
         "Check engine light, limp mode, inconsistent boost pressure",
         "Inspect MAP/boost pressure sensor wiring and connector; replace boost pressure sensor; check reference voltage",
@@ -1006,6 +1142,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0236",
         "Turbocharger",
+        "Warning",
         'Turbocharger/Supercharger Boost Sensor "A" Circuit Range/Performance',
         "Check engine light, boost pressure not matching expected values, reduced power",
         "Inspect boost sensor and vacuum hoses; check for boost leaks; replace sensor if reading is out of range",
@@ -1013,6 +1150,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0237",
         "Turbocharger",
+        "Warning",
         'Turbocharger/Supercharger Boost Sensor "A" Circuit Low',
         "Limp mode, poor performance, check engine light",
         "Check boost sensor wiring for short to ground; replace boost pressure sensor",
@@ -1020,6 +1158,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0238",
         "Turbocharger",
+        "Warning",
         'Turbocharger/Supercharger Boost Sensor "A" Circuit High',
         "Limp mode, engine over-boosting, check engine light",
         "Check boost sensor wiring for open circuit; replace boost pressure sensor",
@@ -1027,6 +1166,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0243",
         "Turbocharger",
+        "Warning",
         'Turbocharger/Supercharger Wastegate Solenoid "A" Malfunction',
         "Boost too high or too low, poor performance, check engine light",
         "Inspect wastegate solenoid wiring; replace boost control solenoid; check pneumatic lines to wastegate actuator",
@@ -1034,6 +1174,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0244",
         "Turbocharger",
+        "Warning",
         'Turbocharger/Supercharger Wastegate Solenoid "A" Range/Performance',
         "Inconsistent boost pressure, reduced power, check engine light",
         "Inspect wastegate solenoid operation; check duty cycle with scan tool; replace solenoid if not responding correctly",
@@ -1041,6 +1182,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0299",
         "Turbocharger",
+        "Warning",
         'Turbocharger/Supercharger "A" Underboost Condition',
         "Lack of power, sluggish acceleration, check engine light, boost pressure low",
         "Check for boost leaks in charge pipes and intercooler; inspect wastegate (may be stuck open); check turbo vanes for carbon buildup; replace turbocharger if bearing failure confirmed",
@@ -1049,6 +1191,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0410",
         "Secondary Air Injection",
+        "Info",
         "Secondary Air Injection System Malfunction",
         "Failed emissions test, check engine light, higher cold-start emissions",
         "Inspect air injection pump; check one-way check valve for failure; inspect hoses and solenoid; replace air pump if seized",
@@ -1056,6 +1199,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0411",
         "Secondary Air Injection",
+        "Info",
         "Secondary Air Injection System Incorrect Flow Detected",
         "Check engine light, emissions test failure; no driveability symptoms usually",
         "Check one-way check valves for clogging or backflow; inspect air pump output; clean or replace check valves and pump",
@@ -1063,6 +1207,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0412",
         "Secondary Air Injection",
+        "Info",
         "Secondary Air Injection Switching Valve Circuit Malfunction",
         "Check engine light, secondary air system not activating properly",
         "Inspect air injection solenoid valve wiring; replace secondary air switching solenoid valve",
@@ -1070,6 +1215,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0413",
         "Secondary Air Injection",
+        "Info",
         "Secondary Air Injection Switching Valve Circuit Open",
         "Check engine light, secondary air system inoperative",
         "Inspect wiring for open circuit to air injection switching solenoid; replace solenoid or repair harness",
@@ -1078,6 +1224,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0353",
         "Ignition",
+        "Warning",
         'Ignition Coil "C" Primary/Secondary Circuit Malfunction',
         "Misfire on cylinder 3, rough idle, check engine light, possible raw fuel smell",
         "Swap coil C with a known-good coil to confirm fault follows; replace ignition coil C; inspect spark plug and wiring",
@@ -1085,6 +1232,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0354",
         "Ignition",
+        "Warning",
         'Ignition Coil "D" Primary/Secondary Circuit Malfunction',
         "Misfire on cylinder 4, rough idle, check engine light",
         "Swap coil D to confirm; replace ignition coil D; inspect spark plug and boot",
@@ -1092,6 +1240,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0355",
         "Ignition",
+        "Warning",
         'Ignition Coil "E" Primary/Secondary Circuit Malfunction',
         "Misfire on cylinder 5 (V6/V8/V10), rough idle, check engine light",
         "Swap coil E to confirm; replace ignition coil E; inspect spark plug",
@@ -1099,6 +1248,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0356",
         "Ignition",
+        "Warning",
         'Ignition Coil "F" Primary/Secondary Circuit Malfunction',
         "Misfire on cylinder 6, rough idle, check engine light",
         "Swap coil F to confirm; replace ignition coil F; inspect spark plug",
@@ -1106,6 +1256,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0357",
         "Ignition",
+        "Warning",
         'Ignition Coil "G" Primary/Secondary Circuit Malfunction',
         "Misfire on cylinder 7 (V8/V10/V12), rough idle, check engine light",
         "Swap coil G to confirm; replace ignition coil G; inspect spark plug and high-voltage cap",
@@ -1113,6 +1264,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0358",
         "Ignition",
+        "Warning",
         'Ignition Coil "H" Primary/Secondary Circuit Malfunction',
         "Misfire on cylinder 8, rough idle, check engine light, poor power on V8",
         "Swap coil H to confirm misfire follows; replace ignition coil H; inspect spark plug",
@@ -1121,6 +1273,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0530",
         "A/C & Climate",
+        "Info",
         "A/C Refrigerant Pressure Sensor Circuit Malfunction",
         "A/C not working, compressor not engaging, check engine light",
         "Inspect A/C pressure sensor wiring and connector; check refrigerant charge level; replace A/C pressure sensor",
@@ -1128,6 +1281,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0531",
         "A/C & Climate",
+        "Info",
         "A/C Refrigerant Pressure Sensor Circuit Range/Performance",
         "A/C compressor cycling erratically, check engine light, A/C blowing warm",
         "Check refrigerant pressure against spec; inspect sensor for contamination; replace A/C pressure sensor",
@@ -1135,6 +1289,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0532",
         "A/C & Climate",
+        "Warning",
         "A/C Refrigerant Pressure Sensor Circuit Low Input",
         "A/C compressor disabled, A/C blowing warm, check engine light",
         "Check sensor wiring for short to ground; verify refrigerant charge is not too low; replace A/C pressure sensor",
@@ -1142,6 +1297,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0533",
         "A/C & Climate",
+        "Warning",
         "A/C Refrigerant Pressure Sensor Circuit High Input",
         "A/C compressor may not engage, check engine light",
         "Check sensor wiring for open circuit; verify refrigerant is not overcharged; replace A/C pressure sensor",
@@ -1149,6 +1305,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0534",
         "A/C & Climate",
+        "Info",
         "A/C Refrigerant Charge Loss",
         "A/C blowing warm only, compressor cycling rapidly, check engine light",
         "Perform UV dye or electronic leak test; repair refrigerant leak; recharge A/C system to spec",
@@ -1157,6 +1314,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0117",
         "Cooling",
+        "Warning",
         "Engine Coolant Temperature Sensor Circuit Low Input",
         "Engine may run rich (PCM thinks engine is cold), black smoke, poor fuel economy",
         "Inspect ECT sensor wiring for short to ground; replace engine coolant temperature sensor",
@@ -1164,6 +1322,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0118",
         "Cooling",
+        "Warning",
         "Engine Coolant Temperature Sensor Circuit High Input",
         "Engine may run lean or poorly (PCM thinks engine is always hot), hard cold start",
         "Inspect ECT sensor wiring for open circuit; replace engine coolant temperature sensor",
@@ -1171,6 +1330,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0119",
         "Cooling",
+        "Warning",
         "Engine Coolant Temperature Sensor Circuit Intermittent",
         "Erratic temperature gauge, intermittent check engine light, occasional poor running",
         "Inspect ECT sensor connector for corrosion; replace ECT sensor; check wiring harness for intermittent short",
@@ -1178,6 +1338,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0125",
         "Cooling",
+        "Warning",
         "Insufficient Coolant Temperature for Closed Loop Fuel Control",
         "Poor fuel economy, heater takes too long to warm up, engine runs cold for extended period",
         "Replace engine thermostat (stuck open); inspect ECT sensor accuracy; check coolant level",
@@ -1186,6 +1347,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0523",
         "Oil",
+        "Critical",
         "Engine Oil Pressure Sensor/Switch Circuit High",
         "Oil warning light on or off erratically, check engine light",
         "Inspect oil pressure sensor wiring for open circuit or short to voltage; replace oil pressure sensor/switch",
@@ -1193,6 +1355,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0524",
         "Oil",
+        "Critical",
         "Engine Oil Pressure Too Low",
         "Oil pressure warning light, engine knocking, potential engine damage",
         "Check oil level immediately; if oil level is OK, inspect oil pressure sensor; check oil pump; stop driving to avoid engine damage",
@@ -1201,6 +1364,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0601",
         "Electrical",
+        "Critical",
         "Internal Control Module Memory Check Sum Error",
         "Multiple seemingly unrelated codes, erratic engine behavior, check engine light",
         "Attempt PCM software update (reflash); replace PCM if checksum failure persists; verify correct PCM calibration for vehicle",
@@ -1208,6 +1372,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0602",
         "Electrical",
+        "Critical",
         "Control Module Programming Error",
         "Engine does not start, multiple fault codes, immobilizer active",
         "Reprogram or reflash PCM using manufacturer scan tool; replace PCM if programming fails repeatedly",
@@ -1215,6 +1380,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0603",
         "Electrical",
+        "Critical",
         "Internal Control Module Keep Alive Memory (KAM) Error",
         "Loss of learned idle and fuel trim settings, rough idle after battery disconnect, check engine light",
         "Disconnect battery for 15 minutes; reconnect and perform idle relearn procedure; replace PCM if KAM error persists",
@@ -1222,6 +1388,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0604",
         "Electrical",
+        "Critical",
         "Internal Control Module RAM Error",
         "Erratic engine operation, false trouble codes, check engine light",
         "Attempt PCM reflash; replace PCM if RAM error persists after reprogramming",
@@ -1229,6 +1396,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0605",
         "Electrical",
+        "Critical",
         "Internal Control Module ROM Error",
         "No start or severe drivability issues, check engine light",
         "Reflash PCM with latest software; replace PCM if ROM error cannot be corrected",
@@ -1236,6 +1404,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0607",
         "Electrical",
+        "Critical",
         "Control Module Performance",
         "Check engine light, various system malfunctions, possible limp mode",
         "Check PCM power supply and ground connections; update PCM software; replace PCM if fault persists",
@@ -1243,6 +1412,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0610",
         "Electrical",
+        "Critical",
         "Control Module Vehicle Options Error",
         "Check engine light, certain vehicle features not working correctly",
         "Reprogram PCM with correct vehicle option configuration; replace PCM if options cannot be programmed",
@@ -1251,6 +1421,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0705",
         "Transmission",
+        "Warning",
         "Transmission Range Sensor Circuit Malfunction (PRNDL Input)",
         "Transmission may not shift out of park, incorrect gear indicator, no reverse lights",
         "Inspect transmission range sensor (neutral safety switch) wiring; adjust or replace range sensor",
@@ -1258,6 +1429,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0706",
         "Transmission",
+        "Warning",
         "Transmission Range Sensor Circuit Range/Performance",
         "Incorrect gear display, erratic shifting, transmission fault light",
         "Check range sensor adjustment; replace transmission range sensor if reading is erratic",
@@ -1265,6 +1437,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0710",
         "Transmission",
+        "Warning",
         "Transmission Fluid Temperature Sensor Circuit Malfunction",
         "Transmission fault light, harsh or erratic shifting especially when cold",
         "Inspect TFT sensor wiring and connector; replace transmission fluid temperature sensor",
@@ -1272,6 +1445,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0711",
         "Transmission",
+        "Warning",
         "Transmission Fluid Temperature Sensor Circuit Range/Performance",
         "Transmission shifting harshly or not warming up normally, transmission fault light",
         "Check TFT sensor resistance against spec; replace sensor; check transmission fluid level and condition",
@@ -1279,6 +1453,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0712",
         "Transmission",
+        "Warning",
         "Transmission Fluid Temperature Sensor Circuit Low Input",
         "Harsh cold shifts, transmission fault light",
         "Inspect TFT sensor wiring for short to ground; replace sensor",
@@ -1286,6 +1461,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0713",
         "Transmission",
+        "Warning",
         "Transmission Fluid Temperature Sensor Circuit High Input",
         "Transmission overheating warning, harsh shifts, fault light",
         "Inspect TFT sensor wiring for open circuit; replace sensor; check transmission fluid level",
@@ -1293,6 +1469,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0716",
         "Transmission",
+        "Warning",
         "Input/Turbine Speed Sensor Circuit Range/Performance",
         "Erratic shift timing, transmission slipping, fault light",
         "Inspect turbine speed sensor wiring; replace input shaft speed sensor; check transmission fluid condition",
@@ -1300,6 +1477,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0717",
         "Transmission",
+        "Warning",
         "Input/Turbine Speed Sensor Circuit No Signal",
         "Transmission won't shift, stuck in one gear, fault light",
         "Replace input turbine speed sensor; inspect wiring; check flywheel/flexplate tone ring",
@@ -1307,6 +1485,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0721",
         "Transmission",
+        "Warning",
         "Output Speed Sensor Circuit Range/Performance",
         "Erratic speedometer, harsh or no shifts, transmission fault light",
         "Inspect output speed sensor wiring and connector; replace output shaft speed sensor",
@@ -1314,6 +1493,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0722",
         "Transmission",
+        "Warning",
         "Output Speed Sensor Circuit No Signal",
         "Speedometer inoperative, transmission stuck in gear, fault light",
         "Replace output shaft speed sensor; inspect tone ring on output shaft for damage; check wiring",
@@ -1321,6 +1501,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0731",
         "Transmission",
+        "Warning",
         "Gear 1 Incorrect Ratio",
         "Slipping in first gear, harsh engagement, transmission fault light",
         "Check transmission fluid level and condition; inspect 1st gear clutch packs and bands; rebuild or replace transmission",
@@ -1328,6 +1509,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0732",
         "Transmission",
+        "Warning",
         "Gear 2 Incorrect Ratio",
         "Slipping in second gear, hesitation on 1-2 shift",
         "Check transmission fluid; inspect 2nd gear clutch pack; service or rebuild transmission",
@@ -1335,6 +1517,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0733",
         "Transmission",
+        "Warning",
         "Gear 3 Incorrect Ratio",
         "Slipping in third gear, poor highway fuel economy",
         "Check transmission fluid; inspect 3rd gear clutch; consider transmission rebuild or replacement",
@@ -1342,6 +1525,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0734",
         "Transmission",
+        "Warning",
         "Gear 4 Incorrect Ratio",
         "Slipping in 4th gear, poor fuel economy on highway, fault light",
         "Check transmission fluid; inspect 4th gear clutch pack; rebuild or replace transmission",
@@ -1349,6 +1533,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0735",
         "Transmission",
+        "Warning",
         "Gear 5 Incorrect Ratio",
         "Slipping in 5th gear on 5-speed automatic, fault light",
         "Check transmission fluid; inspect 5th gear clutch; rebuild or replace transmission",
@@ -1356,6 +1541,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0741",
         "Transmission",
+        "Warning",
         "Torque Converter Clutch Circuit Performance or Stuck Off",
         "Poor fuel economy, RPM flare at highway speed, transmission shudder",
         "Change transmission fluid and filter; replace torque converter; inspect TCC solenoid and wiring",
@@ -1363,6 +1549,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0742",
         "Transmission",
+        "Warning",
         "Torque Converter Clutch Circuit Stuck On",
         "Engine stalling when coming to a stop, rough idle at stop, fault light",
         "Replace torque converter; inspect and replace TCC solenoid; flush transmission fluid",
@@ -1370,6 +1557,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0743",
         "Transmission",
+        "Warning",
         "Torque Converter Clutch Circuit Electrical",
         "TCC not engaging, poor highway fuel economy, fault light",
         "Inspect TCC solenoid wiring; replace TCC solenoid; check PCM output for TCC control",
@@ -1377,6 +1565,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0745",
         "Transmission",
+        "Warning",
         'Pressure Control Solenoid "A" Malfunction',
         "Harsh or slipping shifts, delayed engagement, transmission fault light",
         "Change transmission fluid and filter; replace pressure control solenoid; inspect valve body",
@@ -1384,6 +1573,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0751",
         "Transmission",
+        "Warning",
         'Shift Solenoid "A" Performance or Stuck Off',
         "Transmission stuck in gear, loss of certain gear ranges, fault light",
         "Change transmission fluid; replace shift solenoid A; inspect valve body for sticking valves",
@@ -1391,6 +1581,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0752",
         "Transmission",
+        "Warning",
         'Shift Solenoid "A" Stuck On',
         "Transmission unable to shift properly, delayed shifts, fault light",
         "Change transmission fluid; replace shift solenoid A; inspect valve body",
@@ -1398,6 +1589,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0755",
         "Transmission",
+        "Warning",
         'Shift Solenoid "B" Malfunction',
         "Harsh shifting or no shifting, transmission slipping, fault light",
         "Change transmission fluid and filter; replace shift solenoid B; inspect wiring to solenoid",
@@ -1405,6 +1597,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0756",
         "Transmission",
+        "Warning",
         'Shift Solenoid "B" Performance or Stuck Off',
         "Loss of certain gear ranges, delayed shifts, fault light",
         "Change fluid; replace shift solenoid B; inspect valve body",
@@ -1412,6 +1605,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0760",
         "Transmission",
+        "Warning",
         'Shift Solenoid "C" Malfunction',
         "Harsh shifting, transmission stuck in one gear, fault light",
         "Change transmission fluid; replace shift solenoid C; inspect valve body passages",
@@ -1419,6 +1613,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0780",
         "Transmission",
+        "Warning",
         "Shift Malfunction",
         "Erratic shifting across multiple gears, slipping, fault light",
         "Service transmission fluid and filter; scan for additional codes; inspect shift solenoids and pressure control; rebuild or replace transmission if mechanical failure found",
@@ -1427,6 +1622,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0501",
         "Throttle",
+        "Warning",
         "Vehicle Speed Sensor Range/Performance",
         "Erratic speedometer, ABS warning light, incorrect shift points in automatic",
         "Inspect VSS wiring and connector; replace vehicle speed sensor; check tone ring on output shaft",
@@ -1434,6 +1630,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0502",
         "Throttle",
+        "Warning",
         "Vehicle Speed Sensor Low Input",
         "Speedometer reads zero, no cruise control, transmission shift issues",
         "Inspect VSS wiring for short to ground; replace vehicle speed sensor",
@@ -1441,6 +1638,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0503",
         "Throttle",
+        "Warning",
         "Vehicle Speed Sensor Intermittent/Erratic/High",
         "Speedometer fluctuates, intermittent cruise control dropout, erratic ABS",
         "Inspect VSS connector for corrosion; check tone ring for damage; replace vehicle speed sensor",
@@ -1449,6 +1647,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0220",
         "Throttle",
+        "Warning",
         "Throttle/Pedal Position Sensor/Switch B Circuit Malfunction",
         "Reduced engine power warning, limp mode, stalling",
         "Inspect TPS B wiring and connector; clean throttle body; replace throttle body or pedal position sensor assembly",
@@ -1456,6 +1655,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0221",
         "Throttle",
+        "Warning",
         "Throttle/Pedal Position Sensor/Switch B Circuit Range/Performance",
         "Reduced power, hesitation, check engine light",
         "Inspect throttle body for carbon buildup; clean with throttle cleaner; replace throttle body if TPS B reading is erratic",
@@ -1463,6 +1663,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0222",
         "Throttle",
+        "Warning",
         "Throttle/Pedal Position Sensor/Switch B Circuit Low Input",
         "Limp mode, reduced power, check engine light",
         "Check TPS B wiring for short to ground; replace throttle body or APP sensor; perform throttle body relearn",
@@ -1470,6 +1671,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0223",
         "Throttle",
+        "Warning",
         "Throttle/Pedal Position Sensor/Switch B Circuit High Input",
         "Limp mode, engine surging, check engine light",
         "Check TPS B wiring for open circuit or short to voltage; replace throttle body; perform idle relearn",
@@ -1477,6 +1679,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "P0506",
         "Throttle",
+        "Warning",
         "Idle Control System RPM Lower Than Expected",
         "Engine stalls at idle, very low RPM at idle, rough idle",
         "Clean throttle body and IAC valve passages; replace IAC valve; check for vacuum leaks lowering idle",
@@ -1485,6 +1688,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "U0073",
         "Network & Communication",
+        "Critical",
         "Control Module Communication Bus Off",
         "Multiple system faults simultaneously, check engine light, various warning lights",
         "Inspect CAN bus wiring for shorts or open circuits; check all module connectors; verify battery voltage and ground integrity",
@@ -1492,6 +1696,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "U0100",
         "Network & Communication",
+        "Critical",
         'Lost Communication With ECM/PCM "A"',
         "Multiple warning lights, transmission or ABS faults caused by loss of engine data",
         "Check PCM power supply fuses and grounds; inspect CAN bus wiring to PCM; replace PCM if power and bus are confirmed good",
@@ -1499,6 +1704,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "U0101",
         "Network & Communication",
+        "Warning",
         "Lost Communication With Transmission Control Module (TCM)",
         "Transmission may default to limp mode, no adaptive shifting, fault light",
         "Check TCM power and grounds; inspect CAN bus wiring to TCM; replace TCM if communication cannot be restored",
@@ -1506,6 +1712,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "U0121",
         "Network & Communication",
+        "Critical",
         "Lost Communication With Anti-Lock Brake System (ABS) Control Module",
         "ABS and stability control warning lights, ABS and TCS may be disabled",
         "Check ABS module power and grounds; inspect CAN bus wiring; replace ABS module if confirmed faulty",
@@ -1513,6 +1720,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "U0131",
         "Network & Communication",
+        "Warning",
         "Lost Communication With Power Steering Control Module",
         "Power steering warning light, heavy steering (EPS disabled)",
         "Check EPS module power supply; inspect CAN bus wiring; replace EPS module if communication fault persists",
@@ -1520,6 +1728,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "U0140",
         "Network & Communication",
+        "Warning",
         "Lost Communication With Body Control Module (BCM)",
         "Multiple body function failures: windows, lights, door locks not responding, warning lights",
         "Check BCM fuses and grounds; inspect CAN bus and LIN bus wiring; replace BCM if confirmed faulty",
@@ -1527,6 +1736,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "U0155",
         "Network & Communication",
+        "Info",
         "Lost Communication With Instrument Panel Cluster (IPC)",
         "Instrument cluster not working, gauges inoperative, warning lights out",
         "Check IPC fuse and power supply; inspect CAN bus wiring to IPC; replace instrument cluster if confirmed faulty",
@@ -1534,6 +1744,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "U0164",
         "Network & Communication",
+        "Info",
         "Lost Communication With HVAC Control Module",
         "Climate control not responding, fan or temperature settings ignored, HVAC fault",
         "Check HVAC module fuses; inspect CAN/LIN bus wiring; replace HVAC control module if fault persists",
@@ -1541,6 +1752,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "U0184",
         "Network & Communication",
+        "Info",
         "Lost Communication With Radio",
         "Radio inoperative, audio system fault, may affect steering wheel controls",
         "Check radio fuse and power supply; inspect CAN bus connection to radio; replace radio head unit if confirmed faulty",
@@ -1548,6 +1760,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "U0401",
         "Network & Communication",
+        "Warning",
         'Invalid Data Received From ECM/PCM "A"',
         "Transmission or ABS acting on incorrect engine data, multiple warning lights",
         "Check PCM for internal faults and update software; inspect CAN bus wiring for intermittent faults; replace PCM if sending corrupt data",
@@ -1555,6 +1768,7 @@ DTC_DATA: list[tuple[str, str, str, str, str]] = [
     (
         "U0402",
         "Network & Communication",
+        "Warning",
         "Invalid Data Received From Transmission Control Module (TCM)",
         "Incorrect gear information to engine, rough or erratic shifting behavior reported to other modules",
         "Check TCM software version and update if available; inspect CAN bus; replace TCM if sending invalid data",
@@ -1572,7 +1786,7 @@ def seed(db_path: Path) -> None:
         # Triggers contain semicolons inside BEGIN...END so use executescript
         conn.executescript(FTS_TRIGGERS)
         conn.executemany(
-            "INSERT OR REPLACE INTO dtc_codes (code, category, description, symptoms, fix) VALUES (?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO dtc_codes (code, category, severity, description, symptoms, fix) VALUES (?, ?, ?, ?, ?, ?)",
             DTC_DATA,
         )
         # Rebuild FTS to sync all rows (triggers fire per row already, but rebuild is a safety net)

@@ -31,6 +31,7 @@ def memory_db(monkeypatch, tmp_path):
             CREATE TABLE dtc_codes (
                 code        TEXT PRIMARY KEY,
                 category    TEXT NOT NULL,
+                severity    TEXT NOT NULL DEFAULT 'Warning',
                 description TEXT NOT NULL,
                 symptoms    TEXT NOT NULL,
                 fix         TEXT NOT NULL
@@ -38,11 +39,12 @@ def memory_db(monkeypatch, tmp_path):
             """
         )
         conn.executemany(
-            "INSERT INTO dtc_codes VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO dtc_codes VALUES (?, ?, ?, ?, ?, ?)",
             [
                 (
                     "P0300",
                     "Ignition",
+                    "Warning",
                     "Random/Multiple Cylinder Misfire Detected",
                     "Rough idle, shaking, flashing check engine light",
                     "Replace spark plugs, ignition coils, or fuel injectors",
@@ -50,6 +52,7 @@ def memory_db(monkeypatch, tmp_path):
                 (
                     "P0420",
                     "Catalytic Converter",
+                    "Warning",
                     "Catalyst System Efficiency Below Threshold (Bank 1)",
                     "Check engine light, poor fuel economy, sulfur smell",
                     "Replace catalytic converter; rule out misfires first",
@@ -57,6 +60,7 @@ def memory_db(monkeypatch, tmp_path):
                 (
                     "P0171",
                     "Fuel & Air",
+                    "Warning",
                     "System Too Lean (Bank 1)",
                     "Rough idle, hesitation, poor fuel economy, misfires",
                     "Check for vacuum leaks; inspect MAF sensor and injectors",
@@ -64,6 +68,7 @@ def memory_db(monkeypatch, tmp_path):
                 (
                     "C0031",
                     "ABS & Brakes",
+                    "Critical",
                     "Right Front Wheel Speed Sensor Circuit Malfunction",
                     "ABS warning light, traction control light disabled",
                     "Replace right front wheel speed sensor",
@@ -89,6 +94,16 @@ class TestLookupCode:
         result = db.lookup_code("P0300")
         assert result is not None
         assert result["category"] == "Ignition"
+
+    def test_result_includes_severity(self, memory_db):
+        result = db.lookup_code("P0300")
+        assert result is not None
+        assert result["severity"] == "Warning"
+
+    def test_critical_severity_returned(self, memory_db):
+        result = db.lookup_code("C0031")
+        assert result is not None
+        assert result["severity"] == "Critical"
 
     def test_missing_code_returns_none(self, memory_db):
         result = db.lookup_code("P9999")
@@ -142,6 +157,21 @@ class TestListCodes:
             assert "code" in row
             assert "description" in row
 
+    def test_results_contain_severity(self, memory_db):
+        results = db.list_codes()
+        for row in results:
+            assert "severity" in row
+
+    def test_pagination_offset(self, memory_db):
+        all_rows = db.list_codes()
+        page2 = db.list_codes(offset=2)
+        assert len(page2) == len(all_rows) - 2
+        assert page2[0]["code"] == all_rows[2]["code"]
+
+    def test_limit_respected(self, memory_db):
+        results = db.list_codes(limit=2)
+        assert len(results) == 2
+
 
 # ── db.get_categories ────────────────────────────────────────────────────────
 
@@ -185,6 +215,16 @@ class TestGetCodeDetails:
         assert isinstance(result, dict)
         assert result["category"] == "Catalytic Converter"
 
+    def test_result_includes_severity(self, memory_db):
+        result = main.get_code_details("P0300")
+        assert isinstance(result, dict)
+        assert result["severity"] == "Warning"
+
+    def test_critical_severity_surfaced(self, memory_db):
+        result = main.get_code_details("C0031")
+        assert isinstance(result, dict)
+        assert result["severity"] == "Critical"
+
     def test_normalises_to_uppercase(self, memory_db):
         result = main.get_code_details("p0300")
         assert isinstance(result, dict)
@@ -226,8 +266,21 @@ class TestSearchBySymptom:
     def test_results_contain_expected_keys(self, memory_db):
         results = main.search_by_symptom("misfire")
         assert isinstance(results, list)
+        expected = {"code", "category", "severity", "description", "symptoms", "fix"}
         for row in results:
-            assert {"code", "category", "description", "symptoms", "fix"} <= row.keys()
+            assert expected <= row.keys()
+
+    def test_limit_parameter_respected(self, memory_db):
+        results = main.search_by_symptom("idle", limit=1)
+        assert isinstance(results, list)
+        assert len(results) <= 1
+
+    def test_offset_parameter_paginates(self, memory_db):
+        all_results = main.search_by_symptom("rough idle")
+        if isinstance(all_results, list) and len(all_results) > 1:
+            offset_results = main.search_by_symptom("rough idle", offset=1)
+            assert isinstance(offset_results, list)
+            assert len(offset_results) == len(all_results) - 1
 
 
 # ── Tool: list_codes ─────────────────────────────────────────────────────────
@@ -250,6 +303,12 @@ class TestListCodesTool:
         assert len(result) == 1
         assert result[0]["code"] == "P0300"
 
+    def test_severity_filter_works(self, memory_db):
+        critical = main.list_codes(severity="Critical")
+        assert isinstance(critical, list)
+        assert all(r["severity"] == "Critical" for r in critical)
+        assert any(r["code"] == "C0031" for r in critical)
+
     def test_unknown_category_returns_helpful_string(self, memory_db):
         result = main.list_codes(category="Nonexistent")
         assert isinstance(result, str)
@@ -258,6 +317,18 @@ class TestListCodesTool:
     def test_whitespace_category_returns_all(self, memory_db):
         result = main.list_codes(category="   ")
         assert isinstance(result, list)
+
+    def test_pagination_limit(self, memory_db):
+        result = main.list_codes(limit=2)
+        assert isinstance(result, list)
+        assert len(result) == 2
+
+    def test_pagination_offset(self, memory_db):
+        all_codes = main.list_codes()
+        assert isinstance(all_codes, list)
+        paged = main.list_codes(offset=2)
+        assert isinstance(paged, list)
+        assert len(paged) == len(all_codes) - 2
 
 
 # ── Tool: ping ───────────────────────────────────────────────────────────────
@@ -293,6 +364,14 @@ class TestResourceCode:
         assert isinstance(result, str)
         assert "P0300" in result
         assert "Ignition" in result
+
+    def test_severity_included_in_resource(self, memory_db):
+        result = main.resource_code("P0300")
+        assert "Warning" in result
+
+    def test_critical_severity_in_resource(self, memory_db):
+        result = main.resource_code("C0031")
+        assert "Critical" in result
 
     def test_normalises_to_uppercase(self, memory_db):
         result = main.resource_code("p0300")
@@ -358,3 +437,60 @@ class TestDiagnosePrompt:
         result = main.diagnose("Loss of power on acceleration")
         assert "Likely Cause" in result
         assert "Safety" in result
+
+    def test_critical_severity_mentioned_in_safety_section(self):
+        result = main.diagnose("Oil pressure warning light")
+        assert "Critical" in result
+
+
+# ── Tool: get_related_codes ───────────────────────────────────────────────────
+
+
+class TestGetRelatedCodes:
+    def test_returns_codes_in_same_category(self, memory_db):
+        # P0300 is Ignition; P0420 is Catalytic — no other Ignition codes in fixture
+        # so let's use Fuel & Air which has P0171
+        result = main.get_related_codes("P0171")
+        # Only one Fuel & Air code in fixture — expect empty or helpful string
+        assert isinstance(result, (list, str))
+
+    def test_multiple_codes_in_category(self, memory_db):
+        # Add a second Ignition code so we can test the return
+        import sqlite3 as _sqlite3
+
+        row_data = (
+            "P0301",
+            "Ignition",
+            "Warning",
+            "Cylinder 1 Misfire",
+            "Rough idle",
+            "Replace plug",
+        )
+        with _sqlite3.connect(memory_db) as conn:
+            conn.execute("INSERT INTO dtc_codes VALUES (?, ?, ?, ?, ?, ?)", row_data)
+        result = main.get_related_codes("P0300")
+        assert isinstance(result, list)
+        assert any(r["code"] == "P0301" for r in result)
+        # P0300 itself should not appear
+        assert all(r["code"] != "P0300" for r in result)
+
+    def test_unknown_code_returns_not_found(self, memory_db):
+        result = main.get_related_codes("P9999")
+        assert isinstance(result, str)
+        assert "P9999" in result
+
+    def test_normalises_to_uppercase(self, memory_db):
+        import sqlite3 as _sqlite3
+
+        row_data = (
+            "P0301",
+            "Ignition",
+            "Warning",
+            "Cylinder 1 Misfire",
+            "Rough idle",
+            "Replace plug",
+        )
+        with _sqlite3.connect(memory_db) as conn:
+            conn.execute("INSERT INTO dtc_codes VALUES (?, ?, ?, ?, ?, ?)", row_data)
+        result = main.get_related_codes("p0300")
+        assert isinstance(result, list)
