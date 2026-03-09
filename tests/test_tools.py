@@ -13,6 +13,84 @@ import main  # noqa: E402  (project root on pythonpath)
 
 # ── Fixtures ────────────────────────────────────────────────────────────────
 
+_FIXTURE_ROWS = [
+    (
+        "P0300",
+        "Ignition",
+        "Warning",
+        "Random/Multiple Cylinder Misfire Detected",
+        "Rough idle, shaking, flashing check engine light",
+        "Replace spark plugs, ignition coils, or fuel injectors",
+    ),
+    (
+        "P0420",
+        "Catalytic Converter",
+        "Warning",
+        "Catalyst System Efficiency Below Threshold (Bank 1)",
+        "Check engine light, poor fuel economy, sulfur smell",
+        "Replace catalytic converter; rule out misfires first",
+    ),
+    (
+        "P0171",
+        "Fuel & Air",
+        "Warning",
+        "System Too Lean (Bank 1)",
+        "Rough idle, hesitation, poor fuel economy, misfires",
+        "Check for vacuum leaks; inspect MAF sensor and injectors",
+    ),
+    (
+        "C0031",
+        "ABS & Brakes",
+        "Critical",
+        "Right Front Wheel Speed Sensor Circuit Malfunction",
+        "ABS warning light, traction control light disabled",
+        "Replace right front wheel speed sensor",
+    ),
+]
+
+
+def _create_schema(conn: sqlite3.Connection, *, with_fts: bool = False) -> None:
+    """Create the dtc_codes table and optionally the FTS virtual table + triggers."""
+    conn.execute(
+        """
+        CREATE TABLE dtc_codes (
+            code        TEXT PRIMARY KEY,
+            category    TEXT NOT NULL,
+            severity    TEXT NOT NULL DEFAULT 'Warning',
+            description TEXT NOT NULL,
+            symptoms    TEXT NOT NULL,
+            fix         TEXT NOT NULL
+        )
+        """
+    )
+    if with_fts:
+        conn.execute(
+            """
+            CREATE VIRTUAL TABLE dtc_codes_fts USING fts5(
+                code, category, severity, description, symptoms, fix,
+                content='dtc_codes', content_rowid='rowid'
+            )
+            """
+        )
+        conn.executescript(
+            """
+            CREATE TRIGGER dtc_codes_ai AFTER INSERT ON dtc_codes BEGIN
+                INSERT INTO dtc_codes_fts(rowid, code, category, severity, description, symptoms, fix)
+                VALUES (new.rowid, new.code, new.category, new.severity, new.description, new.symptoms, new.fix);
+            END;
+            CREATE TRIGGER dtc_codes_ad AFTER DELETE ON dtc_codes BEGIN
+                INSERT INTO dtc_codes_fts(dtc_codes_fts, rowid, code, category, severity, description, symptoms, fix)
+                VALUES ('delete', old.rowid, old.code, old.category, old.severity, old.description, old.symptoms, old.fix);
+            END;
+            CREATE TRIGGER dtc_codes_au AFTER UPDATE ON dtc_codes BEGIN
+                INSERT INTO dtc_codes_fts(dtc_codes_fts, rowid, code, category, severity, description, symptoms, fix)
+                VALUES ('delete', old.rowid, old.code, old.category, old.severity, old.description, old.symptoms, old.fix);
+                INSERT INTO dtc_codes_fts(rowid, code, category, severity, description, symptoms, fix)
+                VALUES (new.rowid, new.code, new.category, new.severity, new.description, new.symptoms, new.fix);
+            END;
+            """  # noqa: E501
+        )
+
 
 @pytest.fixture()
 def memory_db(monkeypatch, tmp_path):
@@ -26,54 +104,27 @@ def memory_db(monkeypatch, tmp_path):
     monkeypatch.setattr(db, "DB_PATH", test_db)
 
     with sqlite3.connect(test_db) as conn:
-        conn.execute(
-            """
-            CREATE TABLE dtc_codes (
-                code        TEXT PRIMARY KEY,
-                category    TEXT NOT NULL,
-                severity    TEXT NOT NULL DEFAULT 'Warning',
-                description TEXT NOT NULL,
-                symptoms    TEXT NOT NULL,
-                fix         TEXT NOT NULL
-            )
-            """
-        )
+        _create_schema(conn, with_fts=False)
         conn.executemany(
             "INSERT INTO dtc_codes VALUES (?, ?, ?, ?, ?, ?)",
-            [
-                (
-                    "P0300",
-                    "Ignition",
-                    "Warning",
-                    "Random/Multiple Cylinder Misfire Detected",
-                    "Rough idle, shaking, flashing check engine light",
-                    "Replace spark plugs, ignition coils, or fuel injectors",
-                ),
-                (
-                    "P0420",
-                    "Catalytic Converter",
-                    "Warning",
-                    "Catalyst System Efficiency Below Threshold (Bank 1)",
-                    "Check engine light, poor fuel economy, sulfur smell",
-                    "Replace catalytic converter; rule out misfires first",
-                ),
-                (
-                    "P0171",
-                    "Fuel & Air",
-                    "Warning",
-                    "System Too Lean (Bank 1)",
-                    "Rough idle, hesitation, poor fuel economy, misfires",
-                    "Check for vacuum leaks; inspect MAF sensor and injectors",
-                ),
-                (
-                    "C0031",
-                    "ABS & Brakes",
-                    "Critical",
-                    "Right Front Wheel Speed Sensor Circuit Malfunction",
-                    "ABS warning light, traction control light disabled",
-                    "Replace right front wheel speed sensor",
-                ),
-            ],
+            _FIXTURE_ROWS,
+        )
+        conn.commit()
+
+    return test_db
+
+
+@pytest.fixture()
+def fts_db(monkeypatch, tmp_path):
+    """Like memory_db but includes the FTS5 virtual table and sync triggers."""
+    test_db = tmp_path / "test_fts.db"
+    monkeypatch.setattr(db, "DB_PATH", test_db)
+
+    with sqlite3.connect(test_db) as conn:
+        _create_schema(conn, with_fts=True)
+        conn.executemany(
+            "INSERT INTO dtc_codes VALUES (?, ?, ?, ?, ?, ?)",
+            _FIXTURE_ROWS,
         )
         conn.commit()
 
@@ -798,3 +849,138 @@ class TestResourceStats:
         result = main.resource_stats()
         total = db.count_codes()
         assert f"Total codes: {total}" in result
+
+
+# ── FTS Integration Tests ────────────────────────────────────────────────────
+
+
+class TestFTSSearch:
+    """Test search_symptoms using the real FTS5 virtual table."""
+
+    def test_fts_match_by_symptom(self, fts_db):
+        results = db.search_symptoms("shaking")
+        assert len(results) >= 1
+        assert any(r["code"] == "P0300" for r in results)
+
+    def test_fts_match_by_description(self, fts_db):
+        results = db.search_symptoms("misfire")
+        assert len(results) >= 1
+        assert any(r["code"] == "P0300" for r in results)
+
+    def test_fts_match_by_fix(self, fts_db):
+        results = db.search_symptoms("catalytic converter")
+        assert len(results) >= 1
+        assert any(r["code"] == "P0420" for r in results)
+
+    def test_fts_no_match(self, fts_db):
+        results = db.search_symptoms("xyzzy_no_match_ever")
+        assert results == []
+
+    def test_fts_limit_respected(self, fts_db):
+        results = db.search_symptoms("idle", limit=1)
+        assert len(results) <= 1
+
+    def test_fts_offset_skips_results(self, fts_db):
+        all_results = db.search_symptoms("idle", limit=50)
+        if len(all_results) > 1:
+            offset_results = db.search_symptoms("idle", limit=50, offset=1)
+            assert len(offset_results) == len(all_results) - 1
+
+    def test_fts_results_include_all_fields(self, fts_db):
+        results = db.search_symptoms("shaking")
+        assert len(results) >= 1
+        expected = {"code", "category", "severity", "description", "symptoms", "fix"}
+        assert expected <= results[0].keys()
+
+    def test_fts_tool_returns_list(self, fts_db):
+        result = main.search_by_symptom("shaking")
+        assert isinstance(result, list)
+        assert len(result) >= 1
+
+    def test_fts_word_order_insensitive(self, fts_db):
+        r1 = db.search_symptoms("rough idle")
+        r2 = db.search_symptoms("idle rough")
+        codes1 = {r["code"] for r in r1}
+        codes2 = {r["code"] for r in r2}
+        assert codes1 == codes2
+
+
+# ── Boundary / Edge-Case Tests ───────────────────────────────────────────────
+
+
+class TestParameterValidation:
+    """Test that negative/extreme limit/offset values are handled safely."""
+
+    def test_negative_limit_search_by_symptom(self, memory_db):
+        result = main.search_by_symptom("idle", limit=-5)
+        assert isinstance(result, (list, str))
+
+    def test_negative_offset_search_by_symptom(self, memory_db):
+        result = main.search_by_symptom("idle", offset=-3)
+        assert isinstance(result, (list, str))
+
+    def test_zero_limit_search_by_symptom(self, memory_db):
+        result = main.search_by_symptom("idle", limit=0)
+        assert isinstance(result, (list, str))
+
+    def test_negative_limit_list_codes(self, memory_db):
+        result = main.list_codes(limit=-1)
+        assert isinstance(result, (list, str))
+
+    def test_negative_offset_list_codes(self, memory_db):
+        result = main.list_codes(offset=-10)
+        assert isinstance(result, (list, str))
+
+    def test_zero_limit_list_codes(self, memory_db):
+        result = main.list_codes(limit=0)
+        assert isinstance(result, (list, str))
+
+    def test_huge_limit_list_codes(self, memory_db):
+        result = main.list_codes(limit=999999)
+        assert isinstance(result, list)
+        assert len(result) == 4  # capped and returns all rows
+
+    def test_huge_offset_list_codes(self, memory_db):
+        result = main.list_codes(offset=999999)
+        assert isinstance(result, str)  # no results at that offset
+
+    def test_negative_limit_search_codes(self, memory_db):
+        result = main.search_codes("P", limit=-1)
+        assert isinstance(result, (list, str))
+
+    def test_huge_limit_search_codes(self, memory_db):
+        result = main.search_codes("P", limit=999999)
+        assert isinstance(result, list)
+
+
+class TestListCodesSeverityDB:
+    """Verify severity filter goes through the DB layer (not Python post-filter)."""
+
+    def test_severity_filter_returns_only_matching(self, memory_db):
+        result = main.list_codes(severity="Critical")
+        assert isinstance(result, list)
+        assert all(r["severity"] == "Critical" for r in result)
+
+    def test_severity_and_category_combined(self, memory_db):
+        result = main.list_codes(category="ABS & Brakes", severity="Critical")
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0]["code"] == "C0031"
+
+    def test_severity_filter_no_match(self, memory_db):
+        result = main.list_codes(severity="Info")
+        assert isinstance(result, str)
+        assert "Info" in result
+
+    def test_severity_pagination(self, memory_db):
+        # 3 Warning codes in fixture
+        page1 = main.list_codes(severity="Warning", limit=2)
+        assert isinstance(page1, list)
+        assert len(page1) == 2
+        page2 = main.list_codes(severity="Warning", limit=2, offset=2)
+        assert isinstance(page2, list)
+        assert len(page2) == 1
+        # No overlap
+        codes1 = {r["code"] for r in page1}
+        codes2 = {r["code"] for r in page2}
+        assert codes1.isdisjoint(codes2)

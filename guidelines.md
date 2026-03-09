@@ -26,6 +26,8 @@ This is a Model Context Protocol (MCP) server written in Python that exposes OBD
 - Always use parameterized queries (`?` placeholders) — never interpolate user input into SQL strings.
 - Wrap database access in context managers (`with sqlite3.connect(...) as conn:`).
 - `seed.py` is the single source of truth for the schema and initial data. Running it should be idempotent (use `CREATE TABLE IF NOT EXISTS` and `INSERT OR REPLACE`).
+- Use **indexes** on columns used in `WHERE` / filter clauses (e.g., `idx_category`, `idx_severity`). Declare them in `seed.py` alongside the schema.
+- All filtering and pagination (`LIMIT`, `OFFSET`, `WHERE severity = ?`) must happen **in SQL**, not as Python post-processing. Never fetch a large result set and then slice or filter in Python.
 
 ## MCP Tool Design
 
@@ -33,6 +35,7 @@ This is a Model Context Protocol (MCP) server written in Python that exposes OBD
 - Tool parameters should be simple types (`str`, `int`). Avoid complex objects.
 - Return plain strings or dicts. FastMCP handles serialization.
 - Validate input at the tool boundary (e.g., normalize DTC codes to uppercase, strip whitespace).
+- **Clamp `limit` and `offset`** at the tool boundary: `max(min(limit, MAX), 1)` for limit, `max(offset, 0)` for offset. This prevents negative or zero-page queries.
 - Return helpful "not found" messages rather than empty results or exceptions.
 
 ## Error Handling
@@ -46,6 +49,9 @@ This is a Model Context Protocol (MCP) server written in Python that exposes OBD
 - Write tests with `pytest`. Run with `uv run pytest`.
 - Test tool functions directly by importing them — no need to spin up the full MCP server for unit tests.
 - Mock the database connection for unit tests; use a real `:memory:` SQLite database for integration tests.
+- Use the `fts_db` fixture when testing FTS5 full-text search behaviour; use `memory_db` for tests that only need the base table (LIKE fallback).
+- Include **boundary / parameter validation tests** (negative limit, zero offset, huge values) for every tool that accepts pagination parameters.
+- Each new DTC code added to `seed.py` must have a **unique code**. Run a duplicate check before committing new seed data.
 
 ## Git Practices
 

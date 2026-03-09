@@ -43,22 +43,22 @@ Modern AI coding assistants can do more than write code. With MCP, you can give 
 
 ## Data Coverage
 
-**361 DTC codes** across **23 categories** with three severity levels:
+**428 DTC codes** across **24 categories** with three severity levels:
 
 | Category                | Codes | | Category               | Codes |
 | ----------------------- | :---: |-| ---------------------- | :---: |
-| ABS & Brakes            | 36    | | Throttle               | 33    |
-| Fuel & Air              | 32    | | Transmission           | 32    |
-| Electrical              | 21    | | Ignition               | 20    |
-| Variable Valve Timing   | 18    | | Fuel Injectors         | 14    |
-| Cooling                 | 12    | | Oxygen Sensors         | 12    |
-| A/C & Climate           | 12    | | Catalytic Converter    | 12    |
-| EGR                     | 12    | | Body & Convenience     | 12    |
-| Network & Communication | 11    | | Crankshaft & Camshaft  | 10    |
-| Oil                     | 10    | | Secondary Air Injection| 10    |
-| Steering                | 9     | | Turbocharger           | 9     |
-| Airbag & Safety         | 8     | | EVAP                   | 8     |
-| Knock Sensor            | 8     | |                        |       |
+| ABS & Brakes            | 36    | | Transmission           | 35    |
+| Throttle                | 33    | | Fuel & Air             | 32    |
+| Electrical              | 25    | | Ignition               | 20    |
+| Variable Valve Timing   | 18    | | Airbag & Safety        | 16    |
+| Network & Communication | 16    | | A/C & Climate          | 15    |
+| Cooling                 | 15    | | Turbocharger           | 15    |
+| EVAP                    | 14    | | Fuel Injectors         | 14    |
+| Knock Sensor            | 14    | | Steering               | 14    |
+| Crankshaft & Camshaft   | 13    | | Oil                    | 13    |
+| Body & Convenience      | 12    | | Catalytic Converter    | 12    |
+| EGR                     | 12    | | Hybrid & EV            | 12    |
+| Oxygen Sensors          | 12    | | Secondary Air Injection| 10    |
 
 Severity levels: **Critical** (stop driving) · **Warning** (repair soon) · **Info** (emissions / monitor only)
 
@@ -150,7 +150,7 @@ obd2-mcp-server/
 ├── .vscode/
 │   └── mcp.json       # Registers the MCP server with VS Code / Copilot
 ├── tests/
-│   └── test_tools.py  # pytest test suite (118 tests)
+│   └── test_tools.py  # pytest test suite (141 tests)
 ├── main.py            # FastMCP server — tool, resource, and prompt definitions
 ├── db.py              # Database access layer (SQLite helpers and queries)
 ├── seed.py            # Schema creation and data seeding (source of truth)

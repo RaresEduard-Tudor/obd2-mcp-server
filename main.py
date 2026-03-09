@@ -98,7 +98,7 @@ def search_codes(pattern: str, limit: int = 50) -> list[dict] | str:
     pat = pattern.strip().upper()
     if not pat:
         return "Please provide a code prefix or pattern."
-    results = db.search_code_prefix(pat, limit=min(limit, 200))
+    results = db.search_code_prefix(pat, limit=max(min(limit, 200), 1))
     if not results:
         return f"No codes found matching pattern '{pat}'."
     return results
@@ -122,14 +122,16 @@ def search_by_symptom(text: str, limit: int = 10, offset: int = 0) -> list[dict]
     query = text.strip()
     if not query:
         return "Please provide a symptom description to search for."
+    clamped_limit = max(min(limit, 50), 1)
+    clamped_offset = max(offset, 0)
     try:
-        results = db.search_symptoms(query, limit=min(limit, 50))
+        results = db.search_symptoms(query, limit=clamped_limit, offset=clamped_offset)
     except Exception as exc:
         logger.error("FTS search failed: %s", exc)
         return f"Search failed: {exc}"
     if not results:
         return f"No DTC codes matched the symptom description: '{query}'."
-    return results[offset:]
+    return results
 
 
 @mcp.tool()
@@ -158,9 +160,11 @@ def list_codes(
     """
     cat = category.strip() or None
     sev = severity.strip() or None
-    results = db.list_codes(category=cat, limit=min(limit, 200), offset=offset)
-    if sev:
-        results = [r for r in results if r.get("severity") == sev]
+    clamped_limit = max(min(limit, 200), 1)
+    clamped_offset = max(offset, 0)
+    results = db.list_codes(
+        category=cat, severity=sev, limit=clamped_limit, offset=clamped_offset
+    )
     if not results:
         if cat or sev:
             available_cats = db.get_categories()
@@ -340,7 +344,7 @@ def resource_severity(level: str) -> str:
             f"Invalid severity level '{level}'. "
             f"Valid levels: {', '.join(sorted(valid))}."
         )
-    rows = [r for r in db.list_codes(limit=10000) if r.get("severity") == level]
+    rows = db.list_codes(severity=level, limit=10000)
     if not rows:
         return f"No codes with severity '{level}' found."
     lines = [f"Severity: {level}", f"Total codes: {len(rows)}", ""]

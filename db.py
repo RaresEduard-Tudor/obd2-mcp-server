@@ -25,7 +25,7 @@ def lookup_code(code: str) -> dict | None:
     return dict(row) if row else None
 
 
-def search_symptoms(text: str, limit: int = 10) -> list[dict]:
+def search_symptoms(text: str, limit: int = 10, offset: int = 0) -> list[dict]:
     """Full-text search across description, symptoms, and fix via FTS5.
 
     Falls back to LIKE if the FTS table is not present (e.g. in older test DBs).
@@ -43,9 +43,9 @@ def search_symptoms(text: str, limit: int = 10) -> list[dict]:
                 JOIN dtc_codes d ON d.rowid = f.rowid
                 WHERE dtc_codes_fts MATCH ?
                 ORDER BY rank
-                LIMIT ?
+                LIMIT ? OFFSET ?
                 """,
-                (text, limit),
+                (text, limit, offset),
             ).fetchall()
         else:
             # Fallback for test databases seeded without FTS
@@ -57,28 +57,33 @@ def search_symptoms(text: str, limit: int = 10) -> list[dict]:
                 WHERE symptoms LIKE ?
                    OR description LIKE ?
                    OR fix LIKE ?
-                LIMIT ?
+                LIMIT ? OFFSET ?
                 """,
-                (pattern, pattern, pattern, limit),
+                (pattern, pattern, pattern, limit, offset),
             ).fetchall()
     return [dict(r) for r in rows]
 
 
 def list_codes(
-    category: str | None = None, limit: int = 100, offset: int = 0
+    category: str | None = None,
+    severity: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
 ) -> list[dict]:
-    """Return codes, optionally filtered by category, with pagination support."""
+    """Return codes, optionally filtered by category and/or severity, with pagination."""
+    clauses: list[str] = []
+    params: list[str | int] = []
+    if category:
+        clauses.append("category = ?")
+        params.append(category)
+    if severity:
+        clauses.append("severity = ?")
+        params.append(severity)
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    sql = f"SELECT code, category, severity, description FROM dtc_codes {where} ORDER BY code LIMIT ? OFFSET ?"
+    params += [limit, offset]
     with get_connection() as conn:
-        if category:
-            rows = conn.execute(
-                "SELECT code, category, severity, description FROM dtc_codes WHERE category = ? ORDER BY code LIMIT ? OFFSET ?",
-                (category, limit, offset),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT code, category, severity, description FROM dtc_codes ORDER BY code LIMIT ? OFFSET ?",
-                (limit, offset),
-            ).fetchall()
+        rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -138,23 +143,17 @@ def search_code_prefix(pattern: str, limit: int = 50) -> list[dict]:
 
 def count_codes(category: str | None = None, severity: str | None = None) -> int:
     """Return the total number of codes matching the given filters."""
+    clauses: list[str] = []
+    params: list[str] = []
+    if category:
+        clauses.append("category = ?")
+        params.append(category)
+    if severity:
+        clauses.append("severity = ?")
+        params.append(severity)
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     with get_connection() as conn:
-        if category and severity:
-            return conn.execute(
-                "SELECT COUNT(*) FROM dtc_codes WHERE category = ? AND severity = ?",
-                (category, severity),
-            ).fetchone()[0]
-        if category:
-            return conn.execute(
-                "SELECT COUNT(*) FROM dtc_codes WHERE category = ?",
-                (category,),
-            ).fetchone()[0]
-        if severity:
-            return conn.execute(
-                "SELECT COUNT(*) FROM dtc_codes WHERE severity = ?",
-                (severity,),
-            ).fetchone()[0]
-        return conn.execute("SELECT COUNT(*) FROM dtc_codes").fetchone()[0]
+        return conn.execute(f"SELECT COUNT(*) FROM dtc_codes {where}", params).fetchone()[0]
 
 
 def get_all_codes() -> list[dict]:
