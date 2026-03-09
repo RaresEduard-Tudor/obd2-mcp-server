@@ -23,7 +23,7 @@ Modern AI coding assistants can do more than write code. With MCP, you can give 
 │  │ get_code_details  │  │
 │  │ search_by_symptom │  │
 │  └────────┬──────────┘  │
-│           │              │
+│           │             │
 │  ┌────────▼──────────┐  │
 │  │   SQLite (obd2.db)│  │
 │  └───────────────────┘  │
