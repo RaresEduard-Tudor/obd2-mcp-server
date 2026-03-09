@@ -58,10 +58,11 @@ This is a Model Context Protocol (MCP) server written in Python that exposes OBD
 | File / Dir         | Purpose                                         |
 | ------------------ | ----------------------------------------------- |
 | `main.py`          | FastMCP server entry point and tool definitions  |
+| `db.py`            | Database access layer (all SQLite queries)       |
 | `seed.py`          | Database schema creation and data seeding        |
 | `obd2.db`          | SQLite database (gitignored, generated)          |
 | `pyproject.toml`   | Project metadata, dependencies, tool config      |
 | `.vscode/mcp.json` | Registers the server with VS Code / Copilot      |
-| `tests/`           | pytest test suite                                |
+| `tests/`           | pytest test suite (`uv run pytest`)              |
 | `guidelines.md`    | This file — development rules and conventions    |
 | `README.md`        | Project overview, setup, and usage instructions   |

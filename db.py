@@ -167,6 +167,25 @@ def get_all_codes() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_stats() -> dict:
+    """Return summary statistics: total codes, counts by category, counts by severity."""
+    with get_connection() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM dtc_codes").fetchone()[0]
+        by_cat = conn.execute(
+            "SELECT category, COUNT(*) FROM dtc_codes "
+            "GROUP BY category ORDER BY category"
+        ).fetchall()
+        by_sev = conn.execute(
+            "SELECT severity, COUNT(*) FROM dtc_codes "
+            "GROUP BY severity ORDER BY severity"
+        ).fetchall()
+    return {
+        "total_codes": total,
+        "by_category": {row[0]: row[1] for row in by_cat},
+        "by_severity": {row[0]: row[1] for row in by_sev},
+    }
+
+
 def get_categories() -> list[str]:
     """Return sorted list of distinct category names."""
     with get_connection() as conn:

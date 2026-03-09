@@ -15,6 +15,7 @@ Resources:
   • obd2://code/{code}          — single DTC as a resource (e.g. obd2://code/P0300)
   • obd2://category/{name}      — all codes in a category as a resource
   • obd2://severity/{level}     — all codes with a given severity level
+  • obd2://stats                — total code count with per-category and per-severity breakdown
 
 Prompts:
   • diagnose — guided diagnostic walkthrough for a described vehicle problem
@@ -305,6 +306,24 @@ def resource_category(name: str) -> str:
     lines = [f"Category: {name}", f"Total codes: {len(rows)}", ""]
     for row in rows:
         lines.append(f"  {row['code']}  —  {row['description']}")
+    return "\n".join(lines)
+
+
+@mcp.resource("obd2://stats")
+def resource_stats() -> str:
+    """Summary statistics for the OBD-II database.
+
+    URI: obd2://stats
+    Returns the total number of codes plus counts broken down by category
+    and by severity level (Critical / Warning / Info).
+    """
+    stats = db.get_stats()
+    lines = [f"Total codes: {stats['total_codes']}", "", "By category:"]
+    for cat, count in stats["by_category"].items():
+        lines.append(f"  {cat}: {count}")
+    lines += ["", "By severity:"]
+    for sev, count in stats["by_severity"].items():
+        lines.append(f"  {sev}: {count}")
     return "\n".join(lines)
 
 

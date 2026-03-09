@@ -773,3 +773,28 @@ class TestResourceSeverity:
         result = main.resource_severity("Info")
         assert isinstance(result, str)
         assert "No codes" in result or "Info" in result
+
+
+class TestResourceStats:
+    def test_returns_string(self, memory_db):
+        result = main.resource_stats()
+        assert isinstance(result, str)
+
+    def test_contains_total_count(self, memory_db):
+        result = main.resource_stats()
+        assert "Total codes: 4" in result
+
+    def test_contains_category_breakdown(self, memory_db):
+        result = main.resource_stats()
+        assert "By category:" in result
+        assert "Ignition" in result
+
+    def test_contains_severity_breakdown(self, memory_db):
+        result = main.resource_stats()
+        assert "By severity:" in result
+        assert "Warning" in result
+
+    def test_stats_total_matches_db_count(self, memory_db):
+        result = main.resource_stats()
+        total = db.count_codes()
+        assert f"Total codes: {total}" in result
