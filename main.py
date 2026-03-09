@@ -1,10 +1,17 @@
 """OBD-II Diagnostic Oracle — FastMCP server entry point.
 
-Exposes four tools to GitHub Copilot (Agent Mode):
+Tools:
   • get_code_details  — look up a specific DTC code
   • search_by_symptom — full-text symptom search (FTS5)
   • list_codes        — enumerate codes, optionally filtered by category
   • ping              — health-check: confirms the server and database are running
+
+Resources:
+  • obd2://code/{code}      — single DTC as a resource (e.g. obd2://code/P0300)
+  • obd2://category/{name}  — all codes in a category as a resource
+
+Prompts:
+  • diagnose — guided diagnostic walkthrough for a described vehicle problem
 """
 
 import logging
@@ -109,6 +116,97 @@ def ping() -> dict:
             "categories": categories,
         }
     return {"status": "error", "detail": "Database unreachable or empty."}
+
+
+# ── Resources ────────────────────────────────────────────────────────────────
+
+
+@mcp.resource("obd2://code/{code}")
+def resource_code(code: str) -> str:
+    """Expose a single DTC code as an MCP resource.
+
+    URI format: obd2://code/P0300
+    Returns the code details as formatted plain text, or a not-found message.
+    """
+    row = db.lookup_code(code.strip().upper())
+    if row is None:
+        return f"DTC code '{code.upper()}' was not found in the database."
+    return (
+        f"Code:        {row['code']}\n"
+        f"Category:    {row['category']}\n"
+        f"Description: {row['description']}\n"
+        f"Symptoms:    {row['symptoms']}\n"
+        f"Fix:         {row['fix']}\n"
+    )
+
+
+@mcp.resource("obd2://category/{name}")
+def resource_category(name: str) -> str:
+    """Expose all codes in a category as an MCP resource.
+
+    URI format: obd2://category/Ignition
+    Returns a plain-text list of codes with descriptions, or a not-found message.
+    """
+    rows = db.list_codes(category=name)
+    if not rows:
+        available = db.get_categories()
+        return (
+            f"No codes found for category '{name}'.\n"
+            f"Available categories: {', '.join(available)}"
+        )
+    lines = [f"Category: {name}", f"Total codes: {len(rows)}", ""]
+    for row in rows:
+        lines.append(f"  {row['code']}  —  {row['description']}")
+    return "\n".join(lines)
+
+
+# ── Prompts ──────────────────────────────────────────────────────────────────
+
+
+@mcp.prompt()
+def diagnose(symptoms: str, codes: str = "") -> str:
+    """Generate a structured diagnostic walkthrough for a vehicle problem.
+
+    Args:
+        symptoms: Plain-language description of what the vehicle is doing wrong.
+        codes:    Optional comma-separated DTC codes already retrieved from the car
+                  (e.g. "P0300, P0171"). Leave blank if none are known.
+    """
+    parts = [
+        "You are an expert automotive diagnostic technician.",
+        "The driver has reported the following issue with their vehicle:",
+        f"  {symptoms.strip()}",
+    ]
+
+    if codes.strip():
+        code_list = [c.strip().upper() for c in codes.split(",") if c.strip()]
+        parts.append(
+            "\nThe following OBD-II Diagnostic Trouble Codes (DTCs) have been "
+            f"retrieved from the vehicle: {', '.join(code_list)}."
+        )
+        parts.append(
+            "Use the get_code_details tool to look up each code, then synthesise "
+            "the results into a coherent diagnosis."
+        )
+    else:
+        parts.append(
+            "\nNo DTC codes have been retrieved yet. "
+            "Use the search_by_symptom tool to find relevant codes, "
+            "then use get_code_details to look up the most likely candidates."
+        )
+
+    parts += [
+        "",
+        "Please provide a structured diagnostic response with these sections:",
+        "1. **Likely Cause(s)** — ranked from most to least probable.",
+        "2. **Immediate Safety Concerns** — is the vehicle safe to drive?",
+        "3. **Step-by-Step Diagnosis** — what to inspect or test first, in order.",
+        "4. **Estimated Repair** — typical DIY difficulty (Easy / Moderate / Advanced) "
+        "and whether a specialist should be consulted.",
+        "5. **Preventative Notes** — what could have caused this and how to avoid recurrence.",
+    ]
+
+    return "\n".join(parts)
 
 
 if __name__ == "__main__":

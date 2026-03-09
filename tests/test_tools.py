@@ -282,3 +282,79 @@ class TestPingTool:
         monkeypatch.setattr(db, "DB_PATH", tmp_path / "missing.db")
         result = main.ping()
         assert result["status"] == "error"
+
+
+# ── Resource: obd2://code/{code} ─────────────────────────────────────────────
+
+
+class TestResourceCode:
+    def test_known_code_returns_formatted_string(self, memory_db):
+        result = main.resource_code("P0300")
+        assert isinstance(result, str)
+        assert "P0300" in result
+        assert "Ignition" in result
+
+    def test_normalises_to_uppercase(self, memory_db):
+        result = main.resource_code("p0300")
+        assert "P0300" in result
+
+    def test_strips_whitespace(self, memory_db):
+        result = main.resource_code("  P0300  ")
+        assert "P0300" in result
+
+    def test_unknown_code_returns_not_found_message(self, memory_db):
+        result = main.resource_code("P9999")
+        assert isinstance(result, str)
+        assert "P9999" in result.upper() or "not found" in result.lower()
+
+    def test_result_contains_fix_field(self, memory_db):
+        result = main.resource_code("P0420")
+        assert "catalytic" in result.lower() or "Fix" in result
+
+
+# ── Resource: obd2://category/{name} ─────────────────────────────────────────
+
+
+class TestResourceCategory:
+    def test_known_category_lists_codes(self, memory_db):
+        result = main.resource_category("Ignition")
+        assert isinstance(result, str)
+        assert "P0300" in result
+
+    def test_unknown_category_shows_available(self, memory_db):
+        result = main.resource_category("Nonexistent")
+        assert isinstance(result, str)
+        assert "Nonexistent" in result
+        # Should list alternatives
+        assert "Ignition" in result or "available" in result.lower()
+
+    def test_result_includes_code_count_or_entries(self, memory_db):
+        result = main.resource_category("Fuel & Air")
+        assert "P0171" in result
+
+
+# ── Prompt: diagnose ──────────────────────────────────────────────────────────
+
+
+class TestDiagnosePrompt:
+    def test_returns_string(self):
+        result = main.diagnose("Engine shaking at idle")
+        assert isinstance(result, str)
+
+    def test_contains_symptom(self):
+        result = main.diagnose("Rough idle and white smoke")
+        assert "Rough idle and white smoke" in result
+
+    def test_no_codes_instructs_search(self):
+        result = main.diagnose("Car won't start")
+        assert "search_by_symptom" in result
+
+    def test_with_codes_instructs_lookup(self):
+        result = main.diagnose("Misfiring", codes="P0300, P0301")
+        assert "get_code_details" in result
+        assert "P0300" in result
+
+    def test_contains_structured_sections(self):
+        result = main.diagnose("Loss of power on acceleration")
+        assert "Likely Cause" in result
+        assert "Safety" in result
