@@ -1,0 +1,23 @@
+# Generated database (run seed.py to recreate)
+obd2.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+dist/
+*.egg-info/
+
+# uv
+.python-version
+
+# pytest
+.pytest_cache/
+
+# ruff
+.ruff_cache/
+
+# VS Code (keep mcp.json but ignore other generated settings)
+.vscode/*
+!.vscode/mcp.json

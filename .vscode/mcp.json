@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "obd2-diagnostic": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "main.py"]
+    }
+  }
+}

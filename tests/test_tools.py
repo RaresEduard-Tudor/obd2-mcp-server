@@ -1,0 +1,284 @@
+"""Tests for OBD-II MCP server tools.
+
+Unit tests mock the database layer.
+Integration tests use an in-memory SQLite database via a monkeypatch.
+"""
+
+import sqlite3
+
+import pytest
+
+import db
+import main  # noqa: E402  (project root on pythonpath)
+
+# ── Fixtures ────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def memory_db(monkeypatch, tmp_path):
+    """Patch db.DB_PATH to a temporary file and seed minimal test data.
+
+    This fixture creates the full schema (with category column) but intentionally
+    omits the FTS virtual table so that search_symptoms falls back to LIKE — this
+    keeps the test DB simple while still exercising the search logic.
+    """
+    test_db = tmp_path / "test.db"
+    monkeypatch.setattr(db, "DB_PATH", test_db)
+
+    with sqlite3.connect(test_db) as conn:
+        conn.execute(
+            """
+            CREATE TABLE dtc_codes (
+                code        TEXT PRIMARY KEY,
+                category    TEXT NOT NULL,
+                description TEXT NOT NULL,
+                symptoms    TEXT NOT NULL,
+                fix         TEXT NOT NULL
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO dtc_codes VALUES (?, ?, ?, ?, ?)",
+            [
+                (
+                    "P0300",
+                    "Ignition",
+                    "Random/Multiple Cylinder Misfire Detected",
+                    "Rough idle, shaking, flashing check engine light",
+                    "Replace spark plugs, ignition coils, or fuel injectors",
+                ),
+                (
+                    "P0420",
+                    "Catalytic Converter",
+                    "Catalyst System Efficiency Below Threshold (Bank 1)",
+                    "Check engine light, poor fuel economy, sulfur smell",
+                    "Replace catalytic converter; rule out misfires first",
+                ),
+                (
+                    "P0171",
+                    "Fuel & Air",
+                    "System Too Lean (Bank 1)",
+                    "Rough idle, hesitation, poor fuel economy, misfires",
+                    "Check for vacuum leaks; inspect MAF sensor and injectors",
+                ),
+                (
+                    "C0031",
+                    "ABS & Brakes",
+                    "Right Front Wheel Speed Sensor Circuit Malfunction",
+                    "ABS warning light, traction control light disabled",
+                    "Replace right front wheel speed sensor",
+                ),
+            ],
+        )
+        conn.commit()
+
+    return test_db
+
+
+# ── db.lookup_code ──────────────────────────────────────────────────────────
+
+
+class TestLookupCode:
+    def test_existing_code_returns_dict(self, memory_db):
+        result = db.lookup_code("P0300")
+        assert isinstance(result, dict)
+        assert result["code"] == "P0300"
+        assert "Misfire" in result["description"]
+
+    def test_result_includes_category(self, memory_db):
+        result = db.lookup_code("P0300")
+        assert result is not None
+        assert result["category"] == "Ignition"
+
+    def test_missing_code_returns_none(self, memory_db):
+        result = db.lookup_code("P9999")
+        assert result is None
+
+
+# ── db.search_symptoms ──────────────────────────────────────────────────────
+
+
+class TestSearchSymptoms:
+    def test_symptom_match_returns_results(self, memory_db):
+        results = db.search_symptoms("rough idle")
+        assert len(results) >= 1
+        codes = [r["code"] for r in results]
+        assert "P0300" in codes or "P0171" in codes
+
+    def test_no_match_returns_empty_list(self, memory_db):
+        results = db.search_symptoms("xyzzy_no_match_ever")
+        assert results == []
+
+    def test_limit_respected(self, memory_db):
+        results = db.search_symptoms("idle", limit=1)
+        assert len(results) <= 1
+
+    def test_results_include_category(self, memory_db):
+        results = db.search_symptoms("shaking")
+        assert len(results) >= 1
+        assert "category" in results[0]
+
+
+# ── db.list_codes ────────────────────────────────────────────────────────────
+
+
+class TestListCodes:
+    def test_returns_all_codes_without_filter(self, memory_db):
+        results = db.list_codes()
+        assert len(results) == 4
+
+    def test_category_filter_works(self, memory_db):
+        results = db.list_codes(category="Ignition")
+        assert len(results) == 1
+        assert results[0]["code"] == "P0300"
+
+    def test_unknown_category_returns_empty(self, memory_db):
+        results = db.list_codes(category="Nonexistent")
+        assert results == []
+
+    def test_results_contain_code_and_description(self, memory_db):
+        results = db.list_codes()
+        for row in results:
+            assert "code" in row
+            assert "description" in row
+
+
+# ── db.get_categories ────────────────────────────────────────────────────────
+
+
+class TestGetCategories:
+    def test_returns_distinct_sorted_categories(self, memory_db):
+        cats = db.get_categories()
+        assert "Ignition" in cats
+        assert "Fuel & Air" in cats
+        assert cats == sorted(cats)
+
+    def test_no_duplicates(self, memory_db):
+        cats = db.get_categories()
+        assert len(cats) == len(set(cats))
+
+
+# ── db.db_ping ───────────────────────────────────────────────────────────────
+
+
+class TestDbPing:
+    def test_ping_returns_true_when_data_exists(self, memory_db):
+        assert db.db_ping() is True
+
+    def test_ping_returns_false_on_bad_path(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(db, "DB_PATH", tmp_path / "nonexistent.db")
+        # SQLite will create the file but the table won't exist → exception → False
+        assert db.db_ping() is False
+
+
+# ── Tool: get_code_details ───────────────────────────────────────────────────
+
+
+class TestGetCodeDetails:
+    def test_valid_code_returns_dict(self, memory_db):
+        result = main.get_code_details("P0300")
+        assert isinstance(result, dict)
+        assert result["code"] == "P0300"
+
+    def test_result_includes_category(self, memory_db):
+        result = main.get_code_details("P0420")
+        assert isinstance(result, dict)
+        assert result["category"] == "Catalytic Converter"
+
+    def test_normalises_to_uppercase(self, memory_db):
+        result = main.get_code_details("p0300")
+        assert isinstance(result, dict)
+        assert result["code"] == "P0300"
+
+    def test_strips_whitespace(self, memory_db):
+        result = main.get_code_details("  P0300  ")
+        assert isinstance(result, dict)
+
+    def test_unknown_code_returns_not_found_string(self, memory_db):
+        result = main.get_code_details("P9999")
+        assert isinstance(result, str)
+        assert "P9999" in result
+
+    def test_empty_input_returns_not_found_string(self, memory_db):
+        result = main.get_code_details("  ")
+        assert isinstance(result, str)
+
+
+# ── Tool: search_by_symptom ──────────────────────────────────────────────────
+
+
+class TestSearchBySymptom:
+    def test_matching_symptom_returns_list(self, memory_db):
+        result = main.search_by_symptom("shaking")
+        assert isinstance(result, list)
+        assert len(result) >= 1
+
+    def test_no_match_returns_string(self, memory_db):
+        result = main.search_by_symptom("xyzzy_no_match_ever")
+        assert isinstance(result, str)
+        result_lower = result.lower()
+        assert "no dtc" in result_lower or "not matched" in result_lower
+
+    def test_empty_query_returns_instructions_string(self, memory_db):
+        result = main.search_by_symptom("   ")
+        assert isinstance(result, str)
+
+    def test_results_contain_expected_keys(self, memory_db):
+        results = main.search_by_symptom("misfire")
+        assert isinstance(results, list)
+        for row in results:
+            assert {"code", "category", "description", "symptoms", "fix"} <= row.keys()
+
+
+# ── Tool: list_codes ─────────────────────────────────────────────────────────
+
+
+class TestListCodesTool:
+    def test_no_category_returns_all(self, memory_db):
+        result = main.list_codes()
+        assert isinstance(result, list)
+        assert len(result) == 4
+
+    def test_empty_string_category_returns_all(self, memory_db):
+        result = main.list_codes(category="")
+        assert isinstance(result, list)
+        assert len(result) == 4
+
+    def test_valid_category_filters(self, memory_db):
+        result = main.list_codes(category="Ignition")
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0]["code"] == "P0300"
+
+    def test_unknown_category_returns_helpful_string(self, memory_db):
+        result = main.list_codes(category="Nonexistent")
+        assert isinstance(result, str)
+        assert "Nonexistent" in result
+
+    def test_whitespace_category_returns_all(self, memory_db):
+        result = main.list_codes(category="   ")
+        assert isinstance(result, list)
+
+
+# ── Tool: ping ───────────────────────────────────────────────────────────────
+
+
+class TestPingTool:
+    def test_ping_returns_ok_status(self, memory_db):
+        result = main.ping()
+        assert isinstance(result, dict)
+        assert result["status"] == "ok"
+
+    def test_ping_includes_total_codes(self, memory_db):
+        result = main.ping()
+        assert result["total_codes"] == 4
+
+    def test_ping_includes_categories(self, memory_db):
+        result = main.ping()
+        assert "categories" in result
+        assert "Ignition" in result["categories"]
+
+    def test_ping_error_when_db_missing(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(db, "DB_PATH", tmp_path / "missing.db")
+        result = main.ping()
+        assert result["status"] == "error"

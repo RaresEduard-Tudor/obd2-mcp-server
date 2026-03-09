@@ -1,0 +1,31 @@
+[project]
+name = "obd2-mcp-server"
+version = "0.1.0"
+description = "MCP server exposing OBD-II diagnostic data to GitHub Copilot via FastMCP"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp[cli]>=1.26.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "ruff>=0.15.5",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"seed.py" = ["E501"]  # long string literals in data tuples are unavoidable
+"db.py" = ["E501"]    # SQL string literals are naturally long
+"main.py" = ["E501"]  # docstring lines in tool definitions
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
