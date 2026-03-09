@@ -646,3 +646,130 @@ class TestGetRelatedCodes:
             conn.execute("INSERT INTO dtc_codes VALUES (?, ?, ?, ?, ?, ?)", row_data)
         result = main.get_related_codes("p0300")
         assert isinstance(result, list)
+
+
+# ── Tool: count_codes ─────────────────────────────────────────────────────────
+
+
+class TestCountCodesTool:
+    def test_total_without_filters(self, memory_db):
+        result = main.count_codes()
+        assert result["total"] == 4
+
+    def test_category_filter(self, memory_db):
+        result = main.count_codes(category="Ignition")
+        assert result["total"] == 1
+        assert result["category"] == "Ignition"
+
+    def test_severity_filter(self, memory_db):
+        result = main.count_codes(severity="Critical")
+        assert result["total"] == 1
+        assert result["severity"] == "Critical"
+
+    def test_combined_filter(self, memory_db):
+        result = main.count_codes(category="ABS & Brakes", severity="Critical")
+        assert result["total"] == 1
+
+    def test_no_match_returns_zero(self, memory_db):
+        result = main.count_codes(category="Nonexistent")
+        assert result["total"] == 0
+
+    def test_whitespace_stripped_from_args(self, memory_db):
+        result = main.count_codes(category="  Ignition  ")
+        assert result["total"] == 1
+
+    def test_result_omits_unset_filters(self, memory_db):
+        result = main.count_codes()
+        assert "category" not in result
+        assert "severity" not in result
+
+
+# ── Tool: export_codes ────────────────────────────────────────────────────────
+
+
+class TestExportCodesTool:
+    def test_json_format_returns_valid_json(self, memory_db):
+        import json
+
+        result = main.export_codes("json")
+        assert isinstance(result, str)
+        data = json.loads(result)
+        assert isinstance(data, list)
+        assert len(data) == 4
+
+    def test_json_includes_all_fields(self, memory_db):
+        import json
+
+        data = json.loads(main.export_codes("json"))
+        expected = {"code", "category", "severity", "description", "symptoms", "fix"}
+        for row in data:
+            assert expected <= row.keys()
+
+    def test_csv_format_returns_string(self, memory_db):
+        result = main.export_codes("csv")
+        assert isinstance(result, str)
+        assert "code" in result  # header row
+
+    def test_csv_contains_all_codes(self, memory_db):
+        result = main.export_codes("csv")
+        assert "P0300" in result
+        assert "P0420" in result
+        assert "C0031" in result
+
+    def test_invalid_format_returns_error_string(self, memory_db):
+        result = main.export_codes("xml")
+        assert isinstance(result, str)
+        assert "Invalid" in result
+
+    def test_default_format_is_json(self, memory_db):
+        import json
+
+        result = main.export_codes()
+        data = json.loads(result)
+        assert isinstance(data, list)
+
+    def test_format_case_insensitive(self, memory_db):
+        import json
+
+        result = main.export_codes("JSON")
+        data = json.loads(result)
+        assert isinstance(data, list)
+
+
+# ── Resource: obd2://severity/{level} ────────────────────────────────────────
+
+
+class TestResourceSeverity:
+    def test_critical_returns_string(self, memory_db):
+        result = main.resource_severity("Critical")
+        assert isinstance(result, str)
+        assert "Critical" in result
+
+    def test_critical_includes_critical_code(self, memory_db):
+        result = main.resource_severity("Critical")
+        assert "C0031" in result
+
+    def test_warning_returns_warning_codes(self, memory_db):
+        result = main.resource_severity("Warning")
+        assert "P0300" in result
+
+    def test_result_contains_total_count(self, memory_db):
+        result = main.resource_severity("Critical")
+        assert "Total codes: 1" in result
+
+    def test_invalid_level_returns_error(self, memory_db):
+        result = main.resource_severity("Extreme")
+        assert isinstance(result, str)
+        assert "Invalid" in result
+
+    def test_valid_levels_listed_in_error(self, memory_db):
+        result = main.resource_severity("BadLevel")
+        assert "Critical" in result
+        assert "Warning" in result
+        assert "Info" in result
+
+    def test_info_no_match_returns_message(self, memory_db):
+        # No Info codes in the fixture
+        result = main.resource_severity("Info")
+        assert isinstance(result, str)
+        assert "No codes" in result or "Info" in result

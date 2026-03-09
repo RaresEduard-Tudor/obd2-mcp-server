@@ -6,12 +6,15 @@ Tools:
   • search_by_symptom  — full-text symptom search (FTS5) with pagination
   • search_codes       — search codes by prefix or wildcard pattern
   • list_codes         — enumerate codes, filtered by category/severity, with pagination
+  • count_codes        — count matching codes (supports same filters as list_codes)
   • get_related_codes  — find other codes in the same system category
+  • export_codes       — export all codes as JSON or CSV
   • ping               — health-check: confirms the server and database are running
 
 Resources:
-  • obd2://code/{code}      — single DTC as a resource (e.g. obd2://code/P0300)
-  • obd2://category/{name}  — all codes in a category as a resource
+  • obd2://code/{code}          — single DTC as a resource (e.g. obd2://code/P0300)
+  • obd2://category/{name}      — all codes in a category as a resource
+  • obd2://severity/{level}     — all codes with a given severity level
 
 Prompts:
   • diagnose — guided diagnostic walkthrough for a described vehicle problem
@@ -171,6 +174,58 @@ def list_codes(
 
 
 @mcp.tool()
+def count_codes(category: str = "", severity: str = "") -> dict:
+    """Count the total number of OBD-II codes matching optional filters.
+
+    Useful for understanding how many results a paginated list_codes call
+    would return in total — call this first, then paginate with list_codes.
+
+    Args:
+        category: Optional category name to filter by (case-sensitive).
+        severity: Optional severity to filter by: Critical, Warning, or Info.
+    """
+    cat = category.strip() or None
+    sev = severity.strip() or None
+    total = db.count_codes(category=cat, severity=sev)
+    result: dict = {"total": total}
+    if cat:
+        result["category"] = cat
+    if sev:
+        result["severity"] = sev
+    return result
+
+
+@mcp.tool()
+def export_codes(format: str = "json") -> str:  # noqa: A002
+    """Export all OBD-II DTC codes as a formatted string.
+
+    Returns every code in the database as either JSON or CSV.
+    Useful for offline reference, spreadsheet import, or bulk analysis.
+
+    Args:
+        format: Output format — 'json' (default) or 'csv'.
+    """
+    fmt = format.strip().lower()
+    if fmt not in ("json", "csv"):
+        return "Invalid format. Use 'json' or 'csv'."
+    rows = db.get_all_codes()
+    if fmt == "json":
+        import json
+
+        return json.dumps(rows, indent=2)
+    # CSV
+    import csv
+    import io
+
+    out = io.StringIO()
+    if rows:
+        writer = csv.DictWriter(out, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    return out.getvalue()
+
+
+@mcp.tool()
 def get_related_codes(code: str) -> list[dict] | str:
     """Find other OBD-II codes in the same system category as the given code.
 
@@ -250,6 +305,28 @@ def resource_category(name: str) -> str:
     lines = [f"Category: {name}", f"Total codes: {len(rows)}", ""]
     for row in rows:
         lines.append(f"  {row['code']}  —  {row['description']}")
+    return "\n".join(lines)
+
+
+@mcp.resource("obd2://severity/{level}")
+def resource_severity(level: str) -> str:
+    """Expose all codes with a given severity level as an MCP resource.
+
+    URI format: obd2://severity/Critical
+    Valid levels: Critical, Warning, Info
+    """
+    valid = {"Critical", "Warning", "Info"}
+    if level not in valid:
+        return (
+            f"Invalid severity level '{level}'. "
+            f"Valid levels: {', '.join(sorted(valid))}."
+        )
+    rows = [r for r in db.list_codes(limit=10000) if r.get("severity") == level]
+    if not rows:
+        return f"No codes with severity '{level}' found."
+    lines = [f"Severity: {level}", f"Total codes: {len(rows)}", ""]
+    for row in rows:
+        lines.append(f"  {row['code']}  ({row['category']})  —  {row['description']}")
     return "\n".join(lines)
 
 

@@ -136,6 +136,37 @@ def search_code_prefix(pattern: str, limit: int = 50) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def count_codes(category: str | None = None, severity: str | None = None) -> int:
+    """Return the total number of codes matching the given filters."""
+    with get_connection() as conn:
+        if category and severity:
+            return conn.execute(
+                "SELECT COUNT(*) FROM dtc_codes WHERE category = ? AND severity = ?",
+                (category, severity),
+            ).fetchone()[0]
+        if category:
+            return conn.execute(
+                "SELECT COUNT(*) FROM dtc_codes WHERE category = ?",
+                (category,),
+            ).fetchone()[0]
+        if severity:
+            return conn.execute(
+                "SELECT COUNT(*) FROM dtc_codes WHERE severity = ?",
+                (severity,),
+            ).fetchone()[0]
+        return conn.execute("SELECT COUNT(*) FROM dtc_codes").fetchone()[0]
+
+
+def get_all_codes() -> list[dict]:
+    """Return every code (all columns) ordered by code, for export."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT code, category, severity, description, symptoms, fix "
+            "FROM dtc_codes ORDER BY code"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_categories() -> list[str]:
     """Return sorted list of distinct category names."""
     with get_connection() as conn:
