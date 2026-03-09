@@ -103,6 +103,39 @@ def get_related_codes(code: str, limit: int = 10) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def lookup_codes(codes: list[str]) -> list[dict]:
+    """Return rows for all *codes* that exist, in code order."""
+    if not codes:
+        return []
+    placeholders = ",".join("?" * len(codes))
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"SELECT code, category, severity, description, symptoms, fix "
+            f"FROM dtc_codes WHERE code IN ({placeholders}) ORDER BY code",
+            codes,
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def search_code_prefix(pattern: str, limit: int = 50) -> list[dict]:
+    """Return codes whose code matches *pattern* using SQL LIKE.
+
+    ``*`` is mapped to ``%`` and ``?`` to ``_``.  If the pattern contains no
+    wildcard characters, a trailing ``%`` is appended so it acts as a prefix
+    match (e.g. ``'P030'`` → ``'P030%'``).
+    """
+    sql_pattern = pattern.replace("*", "%").replace("?", "_")
+    if "%" not in sql_pattern and "_" not in sql_pattern:
+        sql_pattern = sql_pattern + "%"
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT code, category, severity, description "
+            "FROM dtc_codes WHERE code LIKE ? ORDER BY code LIMIT ?",
+            (sql_pattern, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_categories() -> list[str]:
     """Return sorted list of distinct category names."""
     with get_connection() as conn:

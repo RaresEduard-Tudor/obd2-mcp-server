@@ -2,7 +2,9 @@
 
 Tools:
   • get_code_details   — look up a specific DTC code (includes severity)
+  • get_codes          — batch look up multiple DTC codes in one call
   • search_by_symptom  — full-text symptom search (FTS5) with pagination
+  • search_codes       — search codes by prefix or wildcard pattern
   • list_codes         — enumerate codes, filtered by category/severity, with pagination
   • get_related_codes  — find other codes in the same system category
   • ping               — health-check: confirms the server and database are running
@@ -43,6 +45,59 @@ def get_code_details(code: str) -> dict | str:
     if result is None:
         return f"DTC code '{normalized}' was not found in the database."
     return result
+
+
+@mcp.tool()
+def get_codes(codes: list[str]) -> list[dict] | str:
+    """Look up multiple OBD-II DTC codes in a single call.
+
+    More efficient than calling get_code_details repeatedly when a vehicle
+    has thrown several fault codes at once.  Returns full details for every
+    found code; unknown codes are listed in a ``not_found`` entry appended
+    to the result list.
+
+    Args:
+        codes: List of DTC codes (e.g. ["P0300", "P0420", "P0171"]).
+               Case-insensitive.
+    """
+    if not codes:
+        return "Please provide at least one DTC code."
+    normalized = [c.strip().upper() for c in codes if c.strip()]
+    if not normalized:
+        return "Please provide at least one DTC code."
+    results = db.lookup_codes(normalized)
+    found = {r["code"] for r in results}
+    missing = [c for c in normalized if c not in found]
+    if missing:
+        results = list(results) + [{"not_found": missing}]
+    return results
+
+
+@mcp.tool()
+def search_codes(pattern: str, limit: int = 50) -> list[dict] | str:
+    """Search OBD-II codes by code prefix or wildcard pattern.
+
+    Supports prefix matching and glob-style wildcards:
+      - "P030"  → matches P0300–P0309
+      - "P03*"  → matches all P03xx codes
+      - "P0?00" → matches P0000, P0100, P0200, …
+      - "C0*"   → all ABS/Chassis C0 codes
+      - "B*"    → all body codes
+
+    Useful when the user asks "show me all P030x misfires" or
+    "what B-codes do you have?".
+
+    Args:
+        pattern: Code prefix or wildcard pattern. Case-insensitive.
+        limit:   Maximum results (default 50, max 200).
+    """
+    pat = pattern.strip().upper()
+    if not pat:
+        return "Please provide a code prefix or pattern."
+    results = db.search_code_prefix(pat, limit=min(limit, 200))
+    if not results:
+        return f"No codes found matching pattern '{pat}'."
+    return results
 
 
 @mcp.tool()

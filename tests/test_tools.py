@@ -446,6 +446,158 @@ class TestDiagnosePrompt:
 # ── Tool: get_related_codes ───────────────────────────────────────────────────
 
 
+# ── db.lookup_codes (batch) ───────────────────────────────────────────────────
+
+
+class TestLookupCodes:
+    def test_single_code_found(self, memory_db):
+        results = db.lookup_codes(["P0300"])
+        assert len(results) == 1
+        assert results[0]["code"] == "P0300"
+
+    def test_multiple_codes_found(self, memory_db):
+        results = db.lookup_codes(["P0300", "P0420"])
+        codes = [r["code"] for r in results]
+        assert "P0300" in codes
+        assert "P0420" in codes
+
+    def test_unknown_code_not_included(self, memory_db):
+        results = db.lookup_codes(["P9999"])
+        assert results == []
+
+    def test_mixed_found_and_missing(self, memory_db):
+        results = db.lookup_codes(["P0300", "P9999"])
+        codes = [r["code"] for r in results]
+        assert "P0300" in codes
+        assert "P9999" not in codes
+
+    def test_empty_list_returns_empty(self, memory_db):
+        results = db.lookup_codes([])
+        assert results == []
+
+    def test_results_include_severity(self, memory_db):
+        results = db.lookup_codes(["P0300"])
+        assert "severity" in results[0]
+
+
+# ── db.search_code_prefix ─────────────────────────────────────────────────────
+
+
+class TestSearchCodePrefix:
+    def test_prefix_match(self, memory_db):
+        results = db.search_code_prefix("P03")
+        codes = [r["code"] for r in results]
+        assert "P0300" in codes
+
+    def test_star_wildcard(self, memory_db):
+        results = db.search_code_prefix("P0*")
+        assert len(results) >= 3
+
+    def test_no_match_returns_empty(self, memory_db):
+        results = db.search_code_prefix("X999")
+        assert results == []
+
+    def test_exact_code_with_no_wildcard(self, memory_db):
+        results = db.search_code_prefix("P0300")
+        assert any(r["code"] == "P0300" for r in results)
+
+    def test_question_mark_wildcard(self, memory_db):
+        results = db.search_code_prefix("P0?00")
+        codes = [r["code"] for r in results]
+        assert "P0300" in codes
+
+    def test_results_contain_severity(self, memory_db):
+        results = db.search_code_prefix("P")
+        assert all("severity" in r for r in results)
+
+
+# ── Tool: get_codes ───────────────────────────────────────────────────────────
+
+
+class TestGetCodesTool:
+    def test_single_found_code(self, memory_db):
+        result = main.get_codes(["P0300"])
+        assert isinstance(result, list)
+        assert result[0]["code"] == "P0300"
+
+    def test_multiple_found_codes(self, memory_db):
+        result = main.get_codes(["P0300", "P0420"])
+        assert isinstance(result, list)
+        found_codes = [r["code"] for r in result if "code" in r]
+        assert "P0300" in found_codes
+        assert "P0420" in found_codes
+
+    def test_missing_code_in_not_found_entry(self, memory_db):
+        result = main.get_codes(["P0300", "P9999"])
+        assert isinstance(result, list)
+        not_found_entries = [r for r in result if "not_found" in r]
+        assert len(not_found_entries) == 1
+        assert "P9999" in not_found_entries[0]["not_found"]
+
+    def test_all_missing_returns_not_found_only(self, memory_db):
+        result = main.get_codes(["P9998", "P9999"])
+        assert isinstance(result, list)
+        not_found_entries = [r for r in result if "not_found" in r]
+        assert len(not_found_entries) == 1
+        assert "P9998" in not_found_entries[0]["not_found"]
+
+    def test_empty_list_returns_string(self, memory_db):
+        result = main.get_codes([])
+        assert isinstance(result, str)
+
+    def test_normalises_to_uppercase(self, memory_db):
+        result = main.get_codes(["p0300"])
+        assert isinstance(result, list)
+        assert result[0]["code"] == "P0300"
+
+    def test_results_include_severity(self, memory_db):
+        result = main.get_codes(["C0031"])
+        assert isinstance(result, list)
+        assert result[0]["severity"] == "Critical"
+
+
+# ── Tool: search_codes ────────────────────────────────────────────────────────
+
+
+class TestSearchCodesTool:
+    def test_prefix_returns_matches(self, memory_db):
+        result = main.search_codes("P03")
+        assert isinstance(result, list)
+        assert any(r["code"] == "P0300" for r in result)
+
+    def test_star_wildcard_returns_matches(self, memory_db):
+        result = main.search_codes("P0*")
+        assert isinstance(result, list)
+        assert len(result) >= 3
+
+    def test_no_match_returns_string(self, memory_db):
+        result = main.search_codes("X999")
+        assert isinstance(result, str)
+        assert "X999" in result
+
+    def test_empty_pattern_returns_string(self, memory_db):
+        result = main.search_codes("   ")
+        assert isinstance(result, str)
+
+    def test_normalises_to_uppercase(self, memory_db):
+        result = main.search_codes("p03")
+        assert isinstance(result, list)
+        assert any(r["code"] == "P0300" for r in result)
+
+    def test_limit_respected(self, memory_db):
+        result = main.search_codes("P", limit=2)
+        assert isinstance(result, list)
+        assert len(result) <= 2
+
+    def test_results_contain_severity(self, memory_db):
+        result = main.search_codes("C0")
+        assert isinstance(result, list)
+        assert all("severity" in r for r in result)
+
+
+# ── Tool: get_related_codes ───────────────────────────────────────────────────
+
+
 class TestGetRelatedCodes:
     def test_returns_codes_in_same_category(self, memory_db):
         # P0300 is Ignition; P0420 is Catalytic — no other Ignition codes in fixture
