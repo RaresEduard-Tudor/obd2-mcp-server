@@ -43,7 +43,7 @@ Modern AI coding assistants can do more than write code. With MCP, you can give 
 
 ## Data Coverage
 
-**428 DTC codes** across **24 categories** with three severity levels:
+**460 DTC codes** across **24 categories** with three severity levels:
 
 | Category                | Codes | | Category               | Codes |
 | ----------------------- | :---: |-| ---------------------- | :---: |
@@ -51,14 +51,14 @@ Modern AI coding assistants can do more than write code. With MCP, you can give 
 | Throttle                | 33    | | Fuel & Air             | 32    |
 | Electrical              | 25    | | Ignition               | 20    |
 | Variable Valve Timing   | 18    | | Airbag & Safety        | 16    |
-| Network & Communication | 16    | | A/C & Climate          | 15    |
+| Body & Convenience      | 16    | | Catalytic Converter    | 16    |
+| Crankshaft & Camshaft   | 16    | | EGR                    | 16    |
+| Hybrid & EV             | 16    | | Network & Communication| 16    |
+| Oil                     | 16    | | Oxygen Sensors         | 16    |
+| Secondary Air Injection | 16    | | A/C & Climate          | 15    |
 | Cooling                 | 15    | | Turbocharger           | 15    |
 | EVAP                    | 14    | | Fuel Injectors         | 14    |
 | Knock Sensor            | 14    | | Steering               | 14    |
-| Crankshaft & Camshaft   | 13    | | Oil                    | 13    |
-| Body & Convenience      | 12    | | Catalytic Converter    | 12    |
-| EGR                     | 12    | | Hybrid & EV            | 12    |
-| Oxygen Sensors          | 12    | | Secondary Air Injection| 10    |
 
 Severity levels: **Critical** (stop driving) · **Warning** (repair soon) · **Info** (emissions / monitor only)
 

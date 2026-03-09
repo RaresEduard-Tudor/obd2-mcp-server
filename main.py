@@ -217,16 +217,22 @@ def export_codes(format: str = "json") -> str:  # noqa: A002
     if fmt == "json":
         import json
 
-        return json.dumps(rows, indent=2)
+        try:
+            return json.dumps(rows, indent=2)
+        except (TypeError, ValueError) as exc:
+            return f"Error serializing JSON: {exc}"
     # CSV
     import csv
     import io
 
     out = io.StringIO()
-    if rows:
-        writer = csv.DictWriter(out, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
+    try:
+        if rows:
+            writer = csv.DictWriter(out, fieldnames=list(rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(rows)
+    except (csv.Error, KeyError) as exc:
+        return f"Error generating CSV: {exc}"
     return out.getvalue()
 
 

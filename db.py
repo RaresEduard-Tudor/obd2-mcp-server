@@ -153,7 +153,9 @@ def count_codes(category: str | None = None, severity: str | None = None) -> int
         params.append(severity)
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     with get_connection() as conn:
-        return conn.execute(f"SELECT COUNT(*) FROM dtc_codes {where}", params).fetchone()[0]
+        return conn.execute(
+            f"SELECT COUNT(*) FROM dtc_codes {where}", params
+        ).fetchone()[0]
 
 
 def get_all_codes() -> list[dict]:
